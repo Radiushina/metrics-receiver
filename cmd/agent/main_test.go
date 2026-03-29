@@ -7,6 +7,9 @@ import (
 	"net/http/httptest"
 	"runtime"
 	"testing"
+	"time"
+
+	"github.com/go-resty/resty/v2"
 )
 
 func TestUpdateGaugesFromMemStats_MapsMemStats(t *testing.T) {
@@ -82,7 +85,7 @@ func TestPostMetric_OK(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client := &http.Client{}
+	client := resty.New().SetTimeout(5 * time.Second)
 	err := postMetric(client, srv.URL, metricTypeGauge, "foo", 1.5)
 	if err != nil {
 		t.Fatal(err)
@@ -90,7 +93,7 @@ func TestPostMetric_OK(t *testing.T) {
 }
 
 func TestPostMetric_NaN(t *testing.T) {
-	client := &http.Client{}
+	client := resty.New()
 	err := postMetric(client, "http://unused", metricTypeGauge, "x", math.NaN())
 	if err == nil {
 		t.Fatal("expected error for NaN")
@@ -103,7 +106,7 @@ func TestPostMetric_NonOKStatus(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client := &http.Client{}
+	client := resty.New().SetTimeout(5 * time.Second)
 	err := postMetric(client, srv.URL, metricTypeGauge, "a", 1)
 	if err == nil {
 		t.Fatal("expected error")
@@ -119,7 +122,7 @@ func TestPostIntMetric_OK(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client := &http.Client{}
+	client := resty.New().SetTimeout(5 * time.Second)
 	err := postIntMetric(client, srv.URL, metricTypeCounter, "PollCount", 7)
 	if err != nil {
 		t.Fatal(err)

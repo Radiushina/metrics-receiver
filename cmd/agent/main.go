@@ -1,9 +1,7 @@
 package main
 
 import (
-	"context"
 	"fmt"
-	"io"
 	"log"
 	"math"
 	"math/rand"
@@ -11,9 +9,12 @@ import (
 	"net/url"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/go-resty/resty/v2"
 )
 
 var gaugeNames = []string{
@@ -59,9 +60,8 @@ const (
 func main() {
 	log.Printf("agent: server %s, poll %v, report %v", serverAddr, pollInterval, reportInterval)
 
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-	}
+	client := resty.New().
+		SetTimeout(5 * time.Second)
 
 	gaugeValues := make(map[string]float64, len(gaugeNames)+1)
 	var ms runtime.MemStats
@@ -159,7 +159,7 @@ func updateGaugesFromMemStats(gaugeValues map[string]float64, ms *runtime.MemSta
 	gaugeValues["RandomValue"] = gaugeValues[pick]
 }
 
-func postMetric(client *http.Client, baseURL, metricType, name string, value float64) error {
+func postMetric(client *resty.Client, baseURL, metricType, name string, value float64) error {
 	if math.IsNaN(value) || math.IsInf(value, 0) {
 		return fmt.Errorf("invalid float value: %v", value)
 	}
@@ -168,36 +168,25 @@ func postMetric(client *http.Client, baseURL, metricType, name string, value flo
 	return basePostMetric(client, baseURL, metricType, name, valueStr)
 }
 
-func postIntMetric(client *http.Client, baseURL, metricType, name string, value int64) error {
+func postIntMetric(client *resty.Client, baseURL, metricType, name string, value int64) error {
 	valueStr := strconv.FormatInt(value, 10)
 	return basePostMetric(client, baseURL, metricType, name, valueStr)
 }
 
-func basePostMetric(client *http.Client, baseURL, metricType, name, valueStr string) error {
+func basePostMetric(client *resty.Client, baseURL, metricType, name, valueStr string) error {
 	nameEsc := url.PathEscape(name)
 	valueEsc := url.PathEscape(valueStr)
+	base := strings.TrimSuffix(baseURL, "/")
+	fullURL := fmt.Sprintf("%s/update/%s/%s/%s", base, metricType, nameEsc, valueEsc)
 
-	fullURL := fmt.Sprintf("%s/update/%s/%s/%s", baseURL, metricType, nameEsc, valueEsc)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, nil)
+	resp, err := client.R().
+		SetHeader("Content-Type", "text/plain").
+		Post(fullURL)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", "text/plain")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	_, _ = io.CopyN(io.Discard, resp.Body, 512)
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status %s", resp.Status)
+	if resp.StatusCode() != http.StatusOK {
+		return fmt.Errorf("unexpected status %s", resp.Status())
 	}
 	return nil
 }
