@@ -10,6 +10,8 @@ import (
 )
 
 func main() {
+	parseFlags()
+
 	if err := run(); err != nil {
 		log.Fatal("Server failed:", err)
 	}
@@ -17,8 +19,8 @@ func main() {
 
 func run() error {
 	store := repository.NewMemStorage()
-	log.Println("starting metrics server on :8080")
-	return http.ListenAndServe(":8080", newMux(store))
+	log.Printf("starting metrics server on %s", flagRunAddr)
+	return http.ListenAndServe(flagRunAddr, newMux(store))
 }
 
 func newMux(store repository.Storage) http.Handler {

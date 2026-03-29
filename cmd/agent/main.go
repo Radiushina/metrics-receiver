@@ -48,17 +48,18 @@ var gaugeNames = []string{
 }
 
 const (
-	serverAddr = "http://localhost:8080"
-
-	pollInterval   = 2 * time.Second
-	reportInterval = 10 * time.Second
-
 	metricTypeGauge   = "gauge"
 	metricTypeCounter = "counter"
 )
 
 func main() {
-	log.Printf("agent: server %s, poll %v, report %v", serverAddr, pollInterval, reportInterval)
+	parseFlags()
+
+	baseURL := serverBaseURL()
+	pollInterval := getPollInterval()
+	reportInterval := getReportInterval()
+
+	log.Printf("agent: server %s, poll %v, report %v", baseURL, pollInterval, reportInterval)
 
 	client := resty.New().
 		SetTimeout(5 * time.Second)
@@ -107,16 +108,16 @@ func main() {
 			log.Printf("report: sending %d gauges + RandomValue + PollCount(+%d)…", len(gaugeNames), delta)
 
 			for _, name := range gaugeNames {
-				if err := postMetric(client, serverAddr, metricTypeGauge, name, snapshot[name]); err != nil {
+				if err := postMetric(client, baseURL, metricTypeGauge, name, snapshot[name]); err != nil {
 					log.Printf("failed to send gauge %s=%v: %v", name, snapshot[name], err)
 				}
 			}
-			if err := postMetric(client, serverAddr, metricTypeGauge, "RandomValue", snapshot["RandomValue"]); err != nil {
+			if err := postMetric(client, baseURL, metricTypeGauge, "RandomValue", snapshot["RandomValue"]); err != nil {
 				log.Printf("failed to send gauge RandomValue=%v: %v", snapshot["RandomValue"], err)
 			}
 
 			if delta > 0 {
-				if err := postIntMetric(client, serverAddr, metricTypeCounter, "PollCount", delta); err != nil {
+				if err := postIntMetric(client, baseURL, metricTypeCounter, "PollCount", delta); err != nil {
 					log.Printf("failed to send counter PollCount+=%d: %v", delta, err)
 				}
 			}
