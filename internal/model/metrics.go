@@ -1,8 +1,9 @@
 package models
 
 const (
-	Counter = "counter"
-	Gauge   = "gauge"
+	Counter       = "counter"
+	Gauge         = "gauge"
+	PollCountName = "PollCount"
 )
 
 // NOTE: Не усложняем пример, вводя иерархическую вложенность структур.

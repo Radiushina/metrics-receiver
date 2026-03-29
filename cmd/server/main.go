@@ -6,6 +6,7 @@ import (
 
 	"github.com/Radiushina/metrics-receiver.git/internal/handler"
 	"github.com/Radiushina/metrics-receiver.git/internal/repository"
+	"github.com/go-chi/chi/v5"
 )
 
 func main() {
@@ -21,7 +22,9 @@ func run() error {
 }
 
 func newMux(store repository.Storage) http.Handler {
-	mux := http.NewServeMux()
-	mux.Handle("POST /update/{mtype}/{name}/{value}", handler.NewUpdateMetricsHandler(store))
-	return mux
+	r := chi.NewRouter()
+	r.Get("/", handler.NewMetricHandler(store))
+	r.Get("/value/{mtype}/{name}", handler.NewValueHandler(store))
+	r.Post("/update/{mtype}/{name}/{value}", handler.NewUpdateMetricsHandler(store))
+	return r
 }
