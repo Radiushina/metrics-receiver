@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"runtime"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -55,21 +57,24 @@ const (
 )
 
 func main() {
-
 	client := &http.Client{
 		Timeout: 5 * time.Second,
 	}
-	// сюда будет складыать называния метрики (ключ) и их значения метрики (значение мапы)
+
 	gaugeValues := make(map[string]float64, len(gaugeNames)+1)
-	// pollCountDelta (тип counter) - счетчик, увеличивающийся на 1 при каждом обновлении метрики из пакета runtime,
-	// на каждый pollInterval
+	var ms runtime.MemStats
+	var mu sync.Mutex
 	var pollCountDelta int64
 
-	var ms runtime.MemStats
-	runtime.ReadMemStats(&ms)
-	pollCountDelta = 1
+	poll := func() {
+		runtime.ReadMemStats(&ms)
+		mu.Lock()
+		updateGaugesFromMemStats(gaugeValues, &ms)
+		mu.Unlock()
+		atomic.AddInt64(&pollCountDelta, 1)
+	}
 
-	updateGaugesFromMemStats(gaugeValues, &ms)
+	poll()
 
 	pollTicker := time.NewTicker(pollInterval)
 	defer pollTicker.Stop()
@@ -77,40 +82,45 @@ func main() {
 	reportTicker := time.NewTicker(reportInterval)
 	defer reportTicker.Stop()
 
-	for {
-		select {
-		case <-pollTicker.C:
-			fmt.Printf("Обновляем метрики [%d, %f]\n", pollCountDelta, gaugeValues["RandomValue"])
-			runtime.ReadMemStats(&ms)
-			pollCountDelta++
-			updateGaugesFromMemStats(gaugeValues, &ms)
-		case <-reportTicker.C:
-			fmt.Printf("\nНачинаем слать запрос\n\n")
+	go func() {
+		for range pollTicker.C {
+			poll()
+		}
+	}()
+
+	go func() {
+		for range reportTicker.C {
+			delta := atomic.SwapInt64(&pollCountDelta, 0)
+
+			mu.Lock()
+			snapshot := make(map[string]float64, len(gaugeValues))
+			for k, v := range gaugeValues {
+				snapshot[k] = v
+			}
+			mu.Unlock()
 
 			for _, name := range gaugeNames {
-				value := gaugeValues[name]
-				if err := postMetric(client, serverAddr, metricTypeGauge, name, value); err != nil {
-					log.Printf("failed to send gauge %s=%v: %v", name, value, err)
+				if err := postMetric(client, serverAddr, metricTypeGauge, name, snapshot[name]); err != nil {
+					log.Printf("failed to send gauge %s=%v: %v", name, snapshot[name], err)
 				}
 			}
-
-			if err := postMetric(client, serverAddr, metricTypeGauge, "RandomValue", gaugeValues["RandomValue"]); err != nil {
-				log.Printf("failed to send gauge RandomValue=%v: %v", gaugeValues["RandomValue"], err)
+			if err := postMetric(client, serverAddr, metricTypeGauge, "RandomValue", snapshot["RandomValue"]); err != nil {
+				log.Printf("failed to send gauge RandomValue=%v: %v", snapshot["RandomValue"], err)
 			}
 
-			if pollCountDelta > 0 {
-				if err := postIntMetric(client, serverAddr, metricTypeCounter, "PollCount", pollCountDelta); err != nil {
-					log.Printf("failed to send counter PollCount+=%d: %v", pollCountDelta, err)
-				} else {
-					pollCountDelta = 0
+			if delta > 0 {
+				if err := postIntMetric(client, serverAddr, metricTypeCounter, "PollCount", delta); err != nil {
+					log.Printf("failed to send counter PollCount+=%d: %v", delta, err)
+					atomic.AddInt64(&pollCountDelta, delta)
 				}
 			}
 		}
-	}
+	}()
+
+	select {}
 }
 
 func updateGaugesFromMemStats(gaugeValues map[string]float64, ms *runtime.MemStats) {
-	// Обновляем gaugeValues
 	gaugeValues["Alloc"] = float64(ms.Alloc)
 	gaugeValues["BuckHashSys"] = float64(ms.BuckHashSys)
 	gaugeValues["Frees"] = float64(ms.Frees)
@@ -178,15 +188,10 @@ func basePostMetric(client *http.Client, baseURL, metricType, name, valueStr str
 	}
 	defer resp.Body.Close()
 
-	// Эта строка читает и выбрасывает начало тела ответа сервера.
-	// После client.Do проверяем StatusCode, но тело часто не нужно. Если сразу выйти, не прочитав тело,
-	// соединение иногда нельзя нормально переиспользовать.
-	//Поэтому частично дренируют тело: читают до 512 байт (обычно ответ пустой или короткий — этого хватает),
-	//потом defer resp.Body.Close() закрывает поток.
 	_, _ = io.CopyN(io.Discard, resp.Body, 512)
 
 	if resp.StatusCode != http.StatusOK {
-		fmt.Println(resp.Status)
+		return fmt.Errorf("unexpected status %s", resp.Status)
 	}
 	return nil
 }
