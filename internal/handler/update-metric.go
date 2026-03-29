@@ -21,10 +21,8 @@ type metricRow struct {
 }
 
 type metricsIndexData struct {
-	Gauges       []metricRow
-	HasCounter   bool
-	CounterName  string
-	CounterValue string
+	Gauges   []metricRow
+	Counters []metricRow
 }
 
 var metricsIndexTmpl = template.Must(template.New("metricsIndex").Parse(`<!DOCTYPE html>
@@ -41,11 +39,13 @@ var metricsIndexTmpl = template.Must(template.New("metricsIndex").Parse(`<!DOCTY
 {{range .Gauges}}<li>{{.Name}}: {{.Value}}</li>
 {{end}}</ul>
 {{end}}
-{{if .HasCounter}}
+{{if .Counters}}
 <h2>Counters</h2>
-<ul><li>{{.CounterName}}: {{.CounterValue}}</li></ul>
+<ul>
+{{range .Counters}}<li>{{.Name}}: {{.Value}}</li>
+{{end}}</ul>
 {{end}}
-{{if and (not .Gauges) (not .HasCounter)}}<p>No metrics yet.</p>{{end}}
+{{if and (not .Gauges) (not .Counters)}}<p>No metrics yet.</p>{{end}}
 </body>
 </html>
 `))
@@ -58,10 +58,10 @@ func NewUpdateMetricsHandler(store repository.Storage) http.HandlerFunc {
 
 func serveUpdateMetrics(w http.ResponseWriter, r *http.Request, store repository.Storage) {
 	mtype := strings.ToLower(chi.URLParam(r, "mtype"))
-	name := chi.URLParam(r, "name")
+	metric := chi.URLParam(r, "metric")
 	valueStr := chi.URLParam(r, "value")
 
-	if name == "" {
+	if metric == "" {
 		http.NotFound(w, r)
 		return
 	}
@@ -78,16 +78,16 @@ func serveUpdateMetrics(w http.ResponseWriter, r *http.Request, store repository
 			http.Error(w, "invalid gauge value", http.StatusBadRequest)
 			return
 		}
-		store.SetGauge(name, v)
-		log.Printf("server: gauge %s = %g", name, v)
+		store.SetGauge(metric, v)
+		log.Printf("server: gauge %s = %g", metric, v)
 	case models.Counter:
 		v, err := strconv.ParseInt(valueStr, 10, 64)
 		if err != nil {
 			http.Error(w, "invalid counter value", http.StatusBadRequest)
 			return
 		}
-		store.AddCounter(name, v)
-		log.Printf("server: counter %s += %d", name, v)
+		store.AddCounter(metric, v)
+		log.Printf("server: counter %s += %d", metric, v)
 	default:
 		if mtype == "" {
 			http.Error(w, "missing metric type", http.StatusBadRequest)
@@ -108,16 +108,16 @@ func NewValueHandler(store repository.Storage) http.HandlerFunc {
 
 func serveMetricValue(w http.ResponseWriter, r *http.Request, store repository.Storage) {
 	mtype := strings.ToLower(chi.URLParam(r, "mtype"))
-	name := chi.URLParam(r, "name")
+	metric := chi.URLParam(r, "metric")
 
-	if name == "" {
+	if metric == "" {
 		http.NotFound(w, r)
 		return
 	}
 
 	switch mtype {
 	case models.Gauge:
-		v, ok := store.GetGauge(name)
+		v, ok := store.GetGauge(metric)
 		if !ok {
 			http.NotFound(w, r)
 			return
@@ -126,7 +126,7 @@ func serveMetricValue(w http.ResponseWriter, r *http.Request, store repository.S
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(strconv.FormatFloat(v, 'g', -1, 64)))
 	case models.Counter:
-		v, ok := store.GetCounter(name)
+		v, ok := store.GetCounter(metric)
 		if !ok {
 			http.NotFound(w, r)
 			return
@@ -165,15 +165,22 @@ func serveMetricsValue(w http.ResponseWriter, store repository.Storage) {
 		})
 	}
 
-	cVal, cOk := store.GetCounter(models.PollCountName)
+	counters := store.Counters()
+	cNames := make([]string, 0, len(counters))
+	for n := range counters {
+		cNames = append(cNames, n)
+	}
+	sort.Strings(cNames)
+	cRows := make([]metricRow, 0, len(cNames))
+	for _, n := range cNames {
+		cRows = append(cRows, metricRow{
+			Name:  n,
+			Value: strconv.FormatInt(counters[n], 10),
+		})
+	}
 
 	var buf bytes.Buffer
-	data := metricsIndexData{
-		Gauges:       gRows,
-		HasCounter:   cOk,
-		CounterName:  models.PollCountName,
-		CounterValue: strconv.FormatInt(cVal, 10),
-	}
+	data := metricsIndexData{Gauges: gRows, Counters: cRows}
 	if err := metricsIndexTmpl.Execute(&buf, data); err != nil {
 		log.Printf("metrics index template: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)

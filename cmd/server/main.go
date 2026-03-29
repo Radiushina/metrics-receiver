@@ -24,7 +24,7 @@ func run() error {
 func newMux(store repository.Storage) http.Handler {
 	r := chi.NewRouter()
 	r.Get("/", handler.NewMetricHandler(store))
-	r.Get("/value/{mtype}/{name}", handler.NewValueHandler(store))
-	r.Post("/update/{mtype}/{name}/{value}", handler.NewUpdateMetricsHandler(store))
+	r.Get("/value/{mtype}/{metric}", handler.NewValueHandler(store))
+	r.Post("/update/{mtype}/{metric}/{value}", handler.NewUpdateMetricsHandler(store))
 	return r
 }

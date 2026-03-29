@@ -8,6 +8,7 @@ type Storage interface {
 	GetGauge(name string) (float64, bool)
 	GetCounter(name string) (int64, bool)
 	Gauges() map[string]float64
+	Counters() map[string]int64
 }
 
 type MemStorage struct {
@@ -54,6 +55,16 @@ func (s *MemStorage) Gauges() map[string]float64 {
 	defer s.mu.RUnlock()
 	out := make(map[string]float64, len(s.gauges))
 	for k, v := range s.gauges {
+		out[k] = v
+	}
+	return out
+}
+
+func (s *MemStorage) Counters() map[string]int64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make(map[string]int64, len(s.counters))
+	for k, v := range s.counters {
 		out[k] = v
 	}
 	return out

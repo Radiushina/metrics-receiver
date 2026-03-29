@@ -1,6 +1,6 @@
 BINARY = metrics-server
 
-.PHONY: run run-server run-agent run-all build build-server build-agent test-iter1 test-iter2 unit
+.PHONY: run run-server run-agent run-all build build-server build-agent test-iter1 test-iter2 test-iter3 unit
 
 run: run-server
 
@@ -26,6 +26,9 @@ test-iter1: build-server
 # As in .github/workflows/mertricstest.yml (increment #2): regex picks TestIteration2, TestIteration2A, TestIteration2B, …
 test-iter2: build-agent
 	./metricstest -test.v -test.run=^TestIteration2[AB]*$$ -source-path=. -agent-binary-path=cmd/agent/agent
+
+test-iter3: build-server build-agent
+	./metricstest -test.v -test.run=^TestIteration3[AB]*$$ -source-path=. -agent-binary-path=cmd/agent/agent -binary-path=cmd/server/server
 
 unit:
 	go test ./...

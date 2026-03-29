@@ -74,11 +74,21 @@ func (m *mockStorage) Gauges() map[string]float64 {
 	return out
 }
 
+func (m *mockStorage) Counters() map[string]int64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make(map[string]int64, len(m.counters))
+	for k, v := range m.counters {
+		out[k] = v
+	}
+	return out
+}
+
 func newTestMux(store repository.Storage) http.Handler {
 	r := chi.NewRouter()
 	r.Get("/", NewMetricHandler(store))
-	r.Post("/update/{mtype}/{name}/{value}", NewUpdateMetricsHandler(store))
-	r.Get("/value/{mtype}/{name}", NewValueHandler(store))
+	r.Post("/update/{mtype}/{metric}/{value}", NewUpdateMetricsHandler(store))
+	r.Get("/value/{mtype}/{metric}", NewValueHandler(store))
 	return r
 }
 
@@ -119,7 +129,7 @@ func TestServeUpdateMetrics_EmptyName_NotFound(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/", nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("mtype", "gauge")
-	rctx.URLParams.Add("name", "")
+	rctx.URLParams.Add("metric", "")
 	rctx.URLParams.Add("value", "1")
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	rec := httptest.NewRecorder()
@@ -271,5 +281,21 @@ func TestHandler_Root_HTML_ListsMetrics(t *testing.T) {
 	wantG := strconv.FormatFloat(1.25, 'g', -1, 64)
 	if !strings.Contains(body, wantG) || !strings.Contains(body, "PollCount: 4") {
 		t.Fatalf("missing values in body %q", body)
+	}
+}
+
+func TestHandler_Root_HTML_AllCountersListed(t *testing.T) {
+	store := newMockStorage()
+	store.AddCounter("PollCount", 1)
+	store.AddCounter("OtherCounter", 2)
+	mux := newTestMux(store)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "PollCount: 1") || !strings.Contains(body, "OtherCounter: 2") {
+		t.Fatalf("expected both counters in body %q", body)
 	}
 }
