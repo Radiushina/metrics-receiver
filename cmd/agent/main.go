@@ -57,6 +57,8 @@ const (
 )
 
 func main() {
+	log.Printf("agent: server %s, poll %v, report %v", serverAddr, pollInterval, reportInterval)
+
 	client := &http.Client{
 		Timeout: 5 * time.Second,
 	}
@@ -65,16 +67,19 @@ func main() {
 	var ms runtime.MemStats
 	var mu sync.Mutex
 	var pollCountDelta int64
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	poll := func() {
 		runtime.ReadMemStats(&ms)
 		mu.Lock()
-		updateGaugesFromMemStats(gaugeValues, &ms)
+		updateGaugesFromMemStats(gaugeValues, &ms, rnd)
 		mu.Unlock()
 		atomic.AddInt64(&pollCountDelta, 1)
+		log.Printf("poll: MemStats + RandomValue updated")
 	}
 
 	poll()
+	log.Printf("poll: initial update done; first metric report in %v", reportInterval)
 
 	pollTicker := time.NewTicker(pollInterval)
 	defer pollTicker.Stop()
@@ -99,6 +104,8 @@ func main() {
 			}
 			mu.Unlock()
 
+			log.Printf("report: sending %d gauges + RandomValue + PollCount(+%d)…", len(gaugeNames), delta)
+
 			for _, name := range gaugeNames {
 				if err := postMetric(client, serverAddr, metricTypeGauge, name, snapshot[name]); err != nil {
 					log.Printf("failed to send gauge %s=%v: %v", name, snapshot[name], err)
@@ -111,7 +118,6 @@ func main() {
 			if delta > 0 {
 				if err := postIntMetric(client, serverAddr, metricTypeCounter, "PollCount", delta); err != nil {
 					log.Printf("failed to send counter PollCount+=%d: %v", delta, err)
-					atomic.AddInt64(&pollCountDelta, delta)
 				}
 			}
 		}
@@ -120,7 +126,7 @@ func main() {
 	select {}
 }
 
-func updateGaugesFromMemStats(gaugeValues map[string]float64, ms *runtime.MemStats) {
+func updateGaugesFromMemStats(gaugeValues map[string]float64, ms *runtime.MemStats, rnd *rand.Rand) {
 	gaugeValues["Alloc"] = float64(ms.Alloc)
 	gaugeValues["BuckHashSys"] = float64(ms.BuckHashSys)
 	gaugeValues["Frees"] = float64(ms.Frees)
@@ -149,7 +155,7 @@ func updateGaugesFromMemStats(gaugeValues map[string]float64, ms *runtime.MemSta
 	gaugeValues["Sys"] = float64(ms.Sys)
 	gaugeValues["TotalAlloc"] = float64(ms.TotalAlloc)
 
-	pick := gaugeNames[rand.Intn(len(gaugeNames))]
+	pick := gaugeNames[rnd.Intn(len(gaugeNames))]
 	gaugeValues["RandomValue"] = gaugeValues[pick]
 }
 

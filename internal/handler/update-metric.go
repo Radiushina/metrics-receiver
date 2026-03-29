@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -39,6 +40,7 @@ func serveUpdateMetrics(w http.ResponseWriter, r *http.Request, store repository
 			return
 		}
 		store.SetGauge(name, v)
+		log.Printf("server: gauge %s = %g", name, v)
 	case models.Counter:
 		v, err := strconv.ParseInt(valueStr, 10, 64)
 		if err != nil {
@@ -46,6 +48,7 @@ func serveUpdateMetrics(w http.ResponseWriter, r *http.Request, store repository
 			return
 		}
 		store.AddCounter(name, v)
+		log.Printf("server: counter %s += %d", name, v)
 	default:
 		if mtype == "" {
 			http.Error(w, "missing metric type", http.StatusBadRequest)
