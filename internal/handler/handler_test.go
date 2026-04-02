@@ -1,12 +1,14 @@
 package handler_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Radiushina/metrics-receiver.git/internal/handler"
 	"github.com/go-chi/chi/v5"
@@ -93,10 +95,13 @@ func newTestMux(svc handler.ServiceProvider) http.Handler {
 }
 
 func TestHandler_PostGauge_OK(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	svc := newMockService()
 	mux := newTestMux(svc)
 
-	req := httptest.NewRequest(http.MethodPost, "/update/gauge/HeapAlloc/42.5", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/update/gauge/HeapAlloc/42.5", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -109,10 +114,13 @@ func TestHandler_PostGauge_OK(t *testing.T) {
 }
 
 func TestHandler_PostCounter_OK(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	svc := newMockService()
 	mux := newTestMux(svc)
 
-	req := httptest.NewRequest(http.MethodPost, "/update/counter/PollCount/3", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/update/counter/PollCount/3", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -125,10 +133,13 @@ func TestHandler_PostCounter_OK(t *testing.T) {
 }
 
 func TestHandler_InvalidGaugeValue_BadRequest(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	svc := newMockService()
 	mux := newTestMux(svc)
 
-	req := httptest.NewRequest(http.MethodPost, "/update/gauge/x/not-a-float", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/update/gauge/x/not-a-float", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -138,10 +149,13 @@ func TestHandler_InvalidGaugeValue_BadRequest(t *testing.T) {
 }
 
 func TestHandler_InvalidCounterValue_BadRequest(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	svc := newMockService()
 	mux := newTestMux(svc)
 
-	req := httptest.NewRequest(http.MethodPost, "/update/counter/x/1.5", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/update/counter/x/1.5", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -151,10 +165,13 @@ func TestHandler_InvalidCounterValue_BadRequest(t *testing.T) {
 }
 
 func TestHandler_InvalidType_BadRequest(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	svc := newMockService()
 	mux := newTestMux(svc)
 
-	req := httptest.NewRequest(http.MethodPost, "/update/unknown/m/1", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/update/unknown/m/1", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -164,10 +181,13 @@ func TestHandler_InvalidType_BadRequest(t *testing.T) {
 }
 
 func TestHandler_GetMethod_MethodNotAllowed(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	svc := newMockService()
 	mux := newTestMux(svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/update/gauge/x/1", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/update/gauge/x/1", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -177,11 +197,14 @@ func TestHandler_GetMethod_MethodNotAllowed(t *testing.T) {
 }
 
 func TestHandler_GetValue_Gauge_OK(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	svc := newMockService()
 	svc.SetGauge("HeapAlloc", 42.5)
 	mux := newTestMux(svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/value/gauge/HeapAlloc", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/value/gauge/HeapAlloc", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -195,11 +218,14 @@ func TestHandler_GetValue_Gauge_OK(t *testing.T) {
 }
 
 func TestHandler_GetValue_Counter_OK(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	svc := newMockService()
 	svc.AddCounter("PollCount", 7)
 	mux := newTestMux(svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/value/counter/PollCount", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/value/counter/PollCount", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -212,10 +238,13 @@ func TestHandler_GetValue_Counter_OK(t *testing.T) {
 }
 
 func TestHandler_GetValue_Unknown_NotFound(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	svc := newMockService()
 	mux := newTestMux(svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/value/gauge/NoSuch", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/value/gauge/NoSuch", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -225,10 +254,13 @@ func TestHandler_GetValue_Unknown_NotFound(t *testing.T) {
 }
 
 func TestHandler_Root_HTML_Empty(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	svc := newMockService()
 	mux := newTestMux(svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -246,12 +278,15 @@ func TestHandler_Root_HTML_Empty(t *testing.T) {
 }
 
 func TestHandler_Root_HTML_ListsMetrics(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	svc := newMockService()
 	svc.SetGauge("HeapAlloc", 1.25)
 	svc.AddCounter("PollCount", 4)
 	mux := newTestMux(svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -269,12 +304,15 @@ func TestHandler_Root_HTML_ListsMetrics(t *testing.T) {
 }
 
 func TestHandler_Root_HTML_AllCountersListed(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	svc := newMockService()
 	svc.AddCounter("PollCount", 1)
 	svc.AddCounter("OtherCounter", 2)
 	mux := newTestMux(svc)
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 

@@ -4,21 +4,27 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Radiushina/metrics-receiver.git/cmd/server"
 	"github.com/Radiushina/metrics-receiver.git/internal/handler"
 	"github.com/Radiushina/metrics-receiver.git/internal/repository"
 	"github.com/Radiushina/metrics-receiver.git/internal/service"
+	"golang.org/x/net/context"
 )
 
 func TestNewMux_PostGauge_OK(t *testing.T) {
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	repo := repository.NewRepository()
 	svc := service.NewService(repo)
 	h := handler.NewHandler(svc)
 	ts := httptest.NewServer(main.NewMux(h))
 	t.Cleanup(ts.Close)
 
-	req, err := http.NewRequest(http.MethodPost, ts.URL+"/update/gauge/HeapAlloc/12", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ts.URL+"/update/gauge/HeapAlloc/12", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,13 +41,16 @@ func TestNewMux_PostGauge_OK(t *testing.T) {
 }
 
 func TestNewMux_PostCounter_OK(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	repo := repository.NewRepository()
 	svc := service.NewService(repo)
 	h := handler.NewHandler(svc)
 	ts := httptest.NewServer(main.NewMux(h))
 	t.Cleanup(ts.Close)
 
-	req, err := http.NewRequest(http.MethodPost, ts.URL+"/update/counter/PollCount/1", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ts.URL+"/update/counter/PollCount/1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,13 +67,16 @@ func TestNewMux_PostCounter_OK(t *testing.T) {
 }
 
 func TestNewMux_InvalidType_BadRequest(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	repo := repository.NewRepository()
 	svc := service.NewService(repo)
 	h := handler.NewHandler(svc)
 	ts := httptest.NewServer(main.NewMux(h))
 	t.Cleanup(ts.Close)
 
-	req, err := http.NewRequest(http.MethodPost, ts.URL+"/update/bad/x/1", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ts.URL+"/update/bad/x/1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
