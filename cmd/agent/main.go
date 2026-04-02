@@ -1,12 +1,15 @@
 package main
 
 import (
+	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"math"
 	"math/rand"
 	"net/http"
 	"net/url"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -53,7 +56,13 @@ const (
 )
 
 func main() {
-	parseFlags()
+	exitCode, err := parseFlags()
+	if err != nil {
+		if !errors.Is(err, flag.ErrHelp) {
+			fmt.Fprintln(os.Stderr, err)
+		}
+		os.Exit(exitCode)
+	}
 
 	baseURL := serverBaseURL()
 	pollInterval := getPollInterval()

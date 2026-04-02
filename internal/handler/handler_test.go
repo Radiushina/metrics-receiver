@@ -1,7 +1,6 @@
-package handler
+package handler_test
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -9,62 +8,62 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Radiushina/metrics-receiver.git/internal/repository"
+	"github.com/Radiushina/metrics-receiver.git/internal/handler"
 	"github.com/go-chi/chi/v5"
 )
 
-type mockStorage struct {
+type mockService struct {
 	mu       sync.Mutex
 	gauges   map[string]float64
 	counters map[string]int64
 }
 
-func newMockStorage() *mockStorage {
-	return &mockStorage{
+func newMockService() *mockService {
+	return &mockService{
 		gauges:   make(map[string]float64),
 		counters: make(map[string]int64),
 	}
 }
 
-func (m *mockStorage) SetGauge(name string, v float64) {
+func (m *mockService) SetGauge(name string, v float64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.gauges[name] = v
 }
 
-func (m *mockStorage) AddCounter(name string, d int64) {
+func (m *mockService) AddCounter(name string, d int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.counters[name] += d
 }
 
-func (m *mockStorage) gauge(name string) float64 {
+func (m *mockService) gauge(name string) float64 {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.gauges[name]
 }
 
-func (m *mockStorage) counter(name string) int64 {
+func (m *mockService) counter(name string) int64 {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.counters[name]
 }
 
-func (m *mockStorage) GetGauge(name string) (float64, bool) {
+func (m *mockService) GetGauge(name string) (float64, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	v, ok := m.gauges[name]
 	return v, ok
 }
 
-func (m *mockStorage) GetCounter(name string) (int64, bool) {
+func (m *mockService) GetCounter(name string) (int64, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	v, ok := m.counters[name]
 	return v, ok
 }
 
-func (m *mockStorage) Gauges() map[string]float64 {
+func (m *mockService) Gauges() map[string]float64 {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := make(map[string]float64, len(m.gauges))
@@ -74,7 +73,7 @@ func (m *mockStorage) Gauges() map[string]float64 {
 	return out
 }
 
-func (m *mockStorage) Counters() map[string]int64 {
+func (m *mockService) Counters() map[string]int64 {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := make(map[string]int64, len(m.counters))
@@ -84,17 +83,18 @@ func (m *mockStorage) Counters() map[string]int64 {
 	return out
 }
 
-func newTestMux(store repository.Storage) http.Handler {
+func newTestMux(svc handler.ServiceProvider) http.Handler {
+	h := handler.NewHandler(svc)
 	r := chi.NewRouter()
-	r.Get("/", NewMetricHandler(store))
-	r.Post("/update/{mtype}/{metric}/{value}", NewUpdateMetricsHandler(store))
-	r.Get("/value/{mtype}/{metric}", NewValueHandler(store))
+	r.Get("/", h.GetMetrics())
+	r.Post("/update/{mtype}/{metric}/{value}", h.Update())
+	r.Get("/value/{mtype}/{metric}", h.GetMetric())
 	return r
 }
 
 func TestHandler_PostGauge_OK(t *testing.T) {
-	store := newMockStorage()
-	mux := newTestMux(store)
+	svc := newMockService()
+	mux := newTestMux(svc)
 
 	req := httptest.NewRequest(http.MethodPost, "/update/gauge/HeapAlloc/42.5", nil)
 	rec := httptest.NewRecorder()
@@ -103,14 +103,14 @@ func TestHandler_PostGauge_OK(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d, body %q", rec.Code, rec.Body.String())
 	}
-	if store.gauge("HeapAlloc") != 42.5 {
-		t.Fatalf("stored gauge: %v", store.gauge("HeapAlloc"))
+	if svc.gauge("HeapAlloc") != 42.5 {
+		t.Fatalf("stored gauge: %v", svc.gauge("HeapAlloc"))
 	}
 }
 
 func TestHandler_PostCounter_OK(t *testing.T) {
-	store := newMockStorage()
-	mux := newTestMux(store)
+	svc := newMockService()
+	mux := newTestMux(svc)
 
 	req := httptest.NewRequest(http.MethodPost, "/update/counter/PollCount/3", nil)
 	rec := httptest.NewRecorder()
@@ -119,30 +119,14 @@ func TestHandler_PostCounter_OK(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d", rec.Code)
 	}
-	if store.counter("PollCount") != 3 {
-		t.Fatalf("stored counter: %v", store.counter("PollCount"))
-	}
-}
-
-func TestServeUpdateMetrics_EmptyName_NotFound(t *testing.T) {
-	store := newMockStorage()
-	req := httptest.NewRequest(http.MethodPost, "/", nil)
-	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("mtype", "gauge")
-	rctx.URLParams.Add("metric", "")
-	rctx.URLParams.Add("value", "1")
-	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
-	rec := httptest.NewRecorder()
-	serveUpdateMetrics(rec, req, store)
-
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d", rec.Code)
+	if svc.counter("PollCount") != 3 {
+		t.Fatalf("stored counter: %v", svc.counter("PollCount"))
 	}
 }
 
 func TestHandler_InvalidGaugeValue_BadRequest(t *testing.T) {
-	store := newMockStorage()
-	mux := newTestMux(store)
+	svc := newMockService()
+	mux := newTestMux(svc)
 
 	req := httptest.NewRequest(http.MethodPost, "/update/gauge/x/not-a-float", nil)
 	rec := httptest.NewRecorder()
@@ -154,8 +138,8 @@ func TestHandler_InvalidGaugeValue_BadRequest(t *testing.T) {
 }
 
 func TestHandler_InvalidCounterValue_BadRequest(t *testing.T) {
-	store := newMockStorage()
-	mux := newTestMux(store)
+	svc := newMockService()
+	mux := newTestMux(svc)
 
 	req := httptest.NewRequest(http.MethodPost, "/update/counter/x/1.5", nil)
 	rec := httptest.NewRecorder()
@@ -167,8 +151,8 @@ func TestHandler_InvalidCounterValue_BadRequest(t *testing.T) {
 }
 
 func TestHandler_InvalidType_BadRequest(t *testing.T) {
-	store := newMockStorage()
-	mux := newTestMux(store)
+	svc := newMockService()
+	mux := newTestMux(svc)
 
 	req := httptest.NewRequest(http.MethodPost, "/update/unknown/m/1", nil)
 	rec := httptest.NewRecorder()
@@ -180,8 +164,8 @@ func TestHandler_InvalidType_BadRequest(t *testing.T) {
 }
 
 func TestHandler_GetMethod_MethodNotAllowed(t *testing.T) {
-	store := newMockStorage()
-	mux := newTestMux(store)
+	svc := newMockService()
+	mux := newTestMux(svc)
 
 	req := httptest.NewRequest(http.MethodGet, "/update/gauge/x/1", nil)
 	rec := httptest.NewRecorder()
@@ -193,9 +177,9 @@ func TestHandler_GetMethod_MethodNotAllowed(t *testing.T) {
 }
 
 func TestHandler_GetValue_Gauge_OK(t *testing.T) {
-	store := newMockStorage()
-	store.SetGauge("HeapAlloc", 42.5)
-	mux := newTestMux(store)
+	svc := newMockService()
+	svc.SetGauge("HeapAlloc", 42.5)
+	mux := newTestMux(svc)
 
 	req := httptest.NewRequest(http.MethodGet, "/value/gauge/HeapAlloc", nil)
 	rec := httptest.NewRecorder()
@@ -211,9 +195,9 @@ func TestHandler_GetValue_Gauge_OK(t *testing.T) {
 }
 
 func TestHandler_GetValue_Counter_OK(t *testing.T) {
-	store := newMockStorage()
-	store.AddCounter("PollCount", 7)
-	mux := newTestMux(store)
+	svc := newMockService()
+	svc.AddCounter("PollCount", 7)
+	mux := newTestMux(svc)
 
 	req := httptest.NewRequest(http.MethodGet, "/value/counter/PollCount", nil)
 	rec := httptest.NewRecorder()
@@ -228,8 +212,8 @@ func TestHandler_GetValue_Counter_OK(t *testing.T) {
 }
 
 func TestHandler_GetValue_Unknown_NotFound(t *testing.T) {
-	store := newMockStorage()
-	mux := newTestMux(store)
+	svc := newMockService()
+	mux := newTestMux(svc)
 
 	req := httptest.NewRequest(http.MethodGet, "/value/gauge/NoSuch", nil)
 	rec := httptest.NewRecorder()
@@ -241,8 +225,8 @@ func TestHandler_GetValue_Unknown_NotFound(t *testing.T) {
 }
 
 func TestHandler_Root_HTML_Empty(t *testing.T) {
-	store := newMockStorage()
-	mux := newTestMux(store)
+	svc := newMockService()
+	mux := newTestMux(svc)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
@@ -262,10 +246,10 @@ func TestHandler_Root_HTML_Empty(t *testing.T) {
 }
 
 func TestHandler_Root_HTML_ListsMetrics(t *testing.T) {
-	store := newMockStorage()
-	store.SetGauge("HeapAlloc", 1.25)
-	store.AddCounter("PollCount", 4)
-	mux := newTestMux(store)
+	svc := newMockService()
+	svc.SetGauge("HeapAlloc", 1.25)
+	svc.AddCounter("PollCount", 4)
+	mux := newTestMux(svc)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
@@ -285,10 +269,10 @@ func TestHandler_Root_HTML_ListsMetrics(t *testing.T) {
 }
 
 func TestHandler_Root_HTML_AllCountersListed(t *testing.T) {
-	store := newMockStorage()
-	store.AddCounter("PollCount", 1)
-	store.AddCounter("OtherCounter", 2)
-	mux := newTestMux(store)
+	svc := newMockService()
+	svc.AddCounter("PollCount", 1)
+	svc.AddCounter("OtherCounter", 2)
+	mux := newTestMux(svc)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()

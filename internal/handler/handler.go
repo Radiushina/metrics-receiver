@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/Radiushina/metrics-receiver.git/internal/model"
-	"github.com/Radiushina/metrics-receiver.git/internal/repository"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -50,13 +49,46 @@ var metricsIndexTmpl = template.Must(template.New("metricsIndex").Parse(`<!DOCTY
 </html>
 `))
 
-func NewUpdateMetricsHandler(store repository.Storage) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		serveUpdateMetrics(w, r, store)
+type (
+	Handler struct {
+		service ServiceProvider
+	}
+
+	ServiceProvider interface {
+		SetGauge(name string, value float64)
+		AddCounter(name string, delta int64)
+		GetGauge(name string) (float64, bool)
+		GetCounter(name string) (int64, bool)
+		Gauges() map[string]float64
+		Counters() map[string]int64
+	}
+)
+
+func NewHandler(service ServiceProvider) *Handler {
+	return &Handler{
+		service: service,
 	}
 }
 
-func serveUpdateMetrics(w http.ResponseWriter, r *http.Request, store repository.Storage) {
+func (h *Handler) GetMetrics() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		getMetricsValue(w, h.service)
+	}
+}
+
+func (h *Handler) GetMetric() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		getMetricValue(w, r, h.service)
+	}
+}
+
+func (h *Handler) Update() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		updateMetrics(w, r, h.service)
+	}
+}
+
+func updateMetrics(w http.ResponseWriter, r *http.Request, service ServiceProvider) {
 	mtype := strings.ToLower(chi.URLParam(r, "mtype"))
 	metric := chi.URLParam(r, "metric")
 	valueStr := chi.URLParam(r, "value")
@@ -78,7 +110,7 @@ func serveUpdateMetrics(w http.ResponseWriter, r *http.Request, store repository
 			http.Error(w, "invalid gauge value", http.StatusBadRequest)
 			return
 		}
-		store.SetGauge(metric, v)
+		service.SetGauge(metric, v)
 		log.Printf("server: gauge %s = %g", metric, v)
 	case models.Counter:
 		v, err := strconv.ParseInt(valueStr, 10, 64)
@@ -86,7 +118,7 @@ func serveUpdateMetrics(w http.ResponseWriter, r *http.Request, store repository
 			http.Error(w, "invalid counter value", http.StatusBadRequest)
 			return
 		}
-		store.AddCounter(metric, v)
+		service.AddCounter(metric, v)
 		log.Printf("server: counter %s += %d", metric, v)
 	default:
 		if mtype == "" {
@@ -100,13 +132,7 @@ func serveUpdateMetrics(w http.ResponseWriter, r *http.Request, store repository
 	w.WriteHeader(http.StatusOK)
 }
 
-func NewValueHandler(store repository.Storage) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		serveMetricValue(w, r, store)
-	}
-}
-
-func serveMetricValue(w http.ResponseWriter, r *http.Request, store repository.Storage) {
+func getMetricValue(w http.ResponseWriter, r *http.Request, service ServiceProvider) {
 	mtype := strings.ToLower(chi.URLParam(r, "mtype"))
 	metric := chi.URLParam(r, "metric")
 
@@ -117,7 +143,7 @@ func serveMetricValue(w http.ResponseWriter, r *http.Request, store repository.S
 
 	switch mtype {
 	case models.Gauge:
-		v, ok := store.GetGauge(metric)
+		v, ok := service.GetGauge(metric)
 		if !ok {
 			http.NotFound(w, r)
 			return
@@ -126,7 +152,7 @@ func serveMetricValue(w http.ResponseWriter, r *http.Request, store repository.S
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(strconv.FormatFloat(v, 'g', -1, 64)))
 	case models.Counter:
-		v, ok := store.GetCounter(metric)
+		v, ok := service.GetCounter(metric)
 		if !ok {
 			http.NotFound(w, r)
 			return
@@ -143,14 +169,8 @@ func serveMetricValue(w http.ResponseWriter, r *http.Request, store repository.S
 	}
 }
 
-func NewMetricHandler(store repository.Storage) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		serveMetricsValue(w, store)
-	}
-}
-
-func serveMetricsValue(w http.ResponseWriter, store repository.Storage) {
-	gauges := store.Gauges()
+func getMetricsValue(w http.ResponseWriter, service ServiceProvider) {
+	gauges := service.Gauges()
 
 	gNames := make([]string, 0, len(gauges))
 	for n := range gauges {
@@ -165,7 +185,7 @@ func serveMetricsValue(w http.ResponseWriter, store repository.Storage) {
 		})
 	}
 
-	counters := store.Counters()
+	counters := service.Counters()
 	cNames := make([]string, 0, len(counters))
 	for n := range counters {
 		cNames = append(cNames, n)

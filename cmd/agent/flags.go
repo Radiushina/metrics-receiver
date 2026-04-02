@@ -13,7 +13,7 @@ var flagRunAddr string
 var flagPollInterval int64
 var flagReportInterval int64
 
-func parseFlags() {
+func parseFlags() (exitCode int, err error) {
 	fs := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 
@@ -23,11 +23,12 @@ func parseFlags() {
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			os.Exit(0)
+			return 0, flag.ErrHelp
 		}
-		fmt.Fprintf(os.Stderr, "ошибка флагов: %v\n", err)
-		os.Exit(1)
+		return 1, fmt.Errorf("ошибка флагов: %w", err)
 	}
+
+	return 0, nil
 }
 
 func serverBaseURL() string {
