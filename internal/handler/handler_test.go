@@ -253,7 +253,7 @@ func TestHandler_GetValue_Unknown_NotFound(t *testing.T) {
 	}
 }
 
-func TestHandler_Root_HTML_Empty(t *testing.T) {
+func TestHandler_GetAll_HTML_Empty(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -277,7 +277,7 @@ func TestHandler_Root_HTML_Empty(t *testing.T) {
 	}
 }
 
-func TestHandler_Root_HTML_ListsMetrics(t *testing.T) {
+func TestHandler_GetAll_HTML_ListsMetrics(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -303,7 +303,7 @@ func TestHandler_Root_HTML_ListsMetrics(t *testing.T) {
 	}
 }
 
-func TestHandler_Root_HTML_AllCountersListed(t *testing.T) {
+func TestHandler_GetAll_HTML_AllCountersListed(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
