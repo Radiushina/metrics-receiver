@@ -1,12 +1,16 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/Radiushina/metrics-receiver.git/internal/handler"
 	"github.com/Radiushina/metrics-receiver.git/internal/repository"
@@ -33,7 +37,37 @@ func run() error {
 	h := handler.NewHandler(svc)
 
 	log.Printf("starting metrics server on %s", flagRunAddr)
-	return http.ListenAndServe(flagRunAddr, NewMux(h))
+	srv := &Server{}
+	mux := NewMux(h)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.Run(mux)
+	}()
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	select {
+	case err := <-errCh:
+		return err
+	case <-ctx.Done():
+		log.Printf("shutting down metrics server")
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	shutdownErr := srv.Shutdown(shutdownCtx)
+	runErr := <-errCh
+
+	if errors.Is(runErr, http.ErrServerClosed) {
+		runErr = nil
+	}
+	if shutdownErr != nil {
+		return shutdownErr
+	}
+	return runErr
 }
 
 func NewMux(h *handler.Handler) http.Handler {
