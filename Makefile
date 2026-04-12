@@ -5,14 +5,14 @@ BINARY = metrics-server
 run: run-server
 
 run-server:
-	go run ./cmd/server/main.go
+	go run ./cmd/server/
 
 run-agent:
-	go run ./cmd/agent/main.go
+	go run ./cmd/agent/
 
 run-all:
 	@echo "Starting server in background, then agent (Ctrl+C stops both)"
-	@bash -c 'set -e; go run ./cmd/server/main.go & srv=$$!; trap "kill $$srv 2>/dev/null; wait $$srv 2>/dev/null" EXIT INT TERM; sleep 1; go run ./cmd/agent/main.go'
+	@bash -c 'set -e; go run ./cmd/server/ & srv=$$!; trap "kill $$srv 2>/dev/null; wait $$srv 2>/dev/null" EXIT INT TERM; sleep 1; go run ./cmd/agent/'
 
 build-server:
 	go build -buildvcs=false -o cmd/server/server ./cmd/server

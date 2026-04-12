@@ -3,10 +3,12 @@ package main
 import (
 	"errors"
 	"flag"
-	"fmt"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/Radiushina/metrics-receiver.git/internal/config"
+	"github.com/caarlos0/env/v6"
 )
 
 var flagRunAddr string
@@ -14,6 +16,8 @@ var flagPollInterval int64
 var flagReportInterval int64
 
 func parseFlags() (exitCode int, err error) {
+	var envCfg config.AgentConfig
+
 	fs := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 
@@ -25,7 +29,21 @@ func parseFlags() (exitCode int, err error) {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0, flag.ErrHelp
 		}
-		return 1, fmt.Errorf("ошибка флагов: %w", err)
+		return 1, err
+	}
+
+	if err := env.Parse(&envCfg); err != nil {
+		return 1, err
+	}
+
+	if envCfg.RunAddr != nil {
+		flagRunAddr = strings.TrimSpace(*envCfg.RunAddr)
+	}
+	if envCfg.PollIntervalSec != nil {
+		flagPollInterval = *envCfg.PollIntervalSec
+	}
+	if envCfg.ReportIntervalSec != nil {
+		flagReportInterval = *envCfg.ReportIntervalSec
 	}
 
 	return 0, nil

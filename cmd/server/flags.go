@@ -5,11 +5,17 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
+
+	"github.com/Radiushina/metrics-receiver.git/internal/config"
+	"github.com/caarlos0/env/v6"
 )
 
 var flagRunAddr string
 
 func parseFlags() (exitCode int, err error) {
+	var envCfg config.ServiceConfig
+
 	fs := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 
@@ -21,5 +27,14 @@ func parseFlags() (exitCode int, err error) {
 		}
 		return 1, fmt.Errorf("ошибка флагов: %v\n", err)
 	}
+
+	if err := env.Parse(&envCfg); err != nil {
+		return 1, err
+	}
+
+	if envCfg.RunAddr != nil {
+		flagRunAddr = strings.TrimSpace(*envCfg.RunAddr)
+	}
+
 	return 0, nil
 }

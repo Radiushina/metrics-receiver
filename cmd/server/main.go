@@ -20,7 +20,7 @@ import (
 
 func main() {
 	if exitCode, err := parseFlags(); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
+		if !errors.Is(err, flag.ErrHelp) {
 			fmt.Fprintln(os.Stderr, err)
 		}
 		os.Exit(exitCode)
