@@ -13,9 +13,11 @@ import (
 	"time"
 
 	"github.com/Radiushina/metrics-receiver.git/internal/handler"
+	"github.com/Radiushina/metrics-receiver.git/internal/logger"
 	"github.com/Radiushina/metrics-receiver.git/internal/repository"
 	"github.com/Radiushina/metrics-receiver.git/internal/service"
 	"github.com/go-chi/chi/v5"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -32,11 +34,15 @@ func main() {
 }
 
 func run() error {
+	if err := logger.Initialize(flagLogLevel); err != nil {
+		return err
+	}
+
 	repos := repository.NewRepository()
 	svc := service.NewService(repos)
 	h := handler.NewHandler(svc)
 
-	log.Printf("starting metrics server on %s", flagRunAddr)
+	logger.Log.Info("starting metrics server on", zap.String("address", flagRunAddr))
 	srv := &Server{}
 	mux := NewMux(h)
 
@@ -72,6 +78,7 @@ func run() error {
 
 func NewMux(h *handler.Handler) http.Handler {
 	r := chi.NewRouter()
+	r.Use(logger.LoggingMiddleware)
 	r.Get("/", h.GetMetrics())
 	r.Get("/value/{mtype}/{metric}", h.GetMetric())
 	r.Post("/update/{mtype}/{metric}/{value}", h.Update())

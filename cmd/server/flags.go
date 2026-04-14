@@ -11,7 +11,10 @@ import (
 	"github.com/caarlos0/env/v6"
 )
 
-var flagRunAddr string
+var (
+	flagRunAddr  string
+	flagLogLevel string
+)
 
 func parseFlags() (exitCode int, err error) {
 	var envCfg config.ServiceConfig
@@ -20,6 +23,7 @@ func parseFlags() (exitCode int, err error) {
 	fs.SetOutput(os.Stderr)
 
 	fs.StringVar(&flagRunAddr, "a", ":8080", "address and port to run server")
+	fs.StringVar(&flagLogLevel, "l", "info", "log level")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -34,6 +38,10 @@ func parseFlags() (exitCode int, err error) {
 
 	if envCfg.RunAddr != nil {
 		flagRunAddr = strings.TrimSpace(*envCfg.RunAddr)
+	}
+
+	if envLogLevel := os.Getenv("LOG_LEVEL"); envLogLevel != "" {
+		flagLogLevel = envLogLevel
 	}
 
 	return 0, nil
