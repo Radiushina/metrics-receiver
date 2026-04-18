@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	models "github.com/Radiushina/metrics-receiver.git/internal/model"
 	"github.com/go-resty/resty/v2"
 )
 
