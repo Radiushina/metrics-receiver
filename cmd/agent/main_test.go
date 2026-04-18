@@ -123,7 +123,7 @@ func TestPostIntMetric_OK(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	client := resty.New().SetTimeout(5 * time.Second)
-	err := postIntMetric(client, srv.URL, metricTypeCounter, "PollCount", 7)
+	err := postIntMetric(client, srv.URL, metricTypeCounter, models.PollCount, 7)
 	if err != nil {
 		t.Fatal(err)
 	}

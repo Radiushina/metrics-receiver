@@ -3,6 +3,7 @@ package repository_test
 import (
 	"testing"
 
+	models "github.com/Radiushina/metrics-receiver.git/internal/model"
 	"github.com/Radiushina/metrics-receiver.git/internal/repository"
 )
 
@@ -18,10 +19,10 @@ func TestMemStorage_SetGauge_Replaces(t *testing.T) {
 
 func TestMemStorage_AddCounter_Accumulates(t *testing.T) {
 	s := repository.NewRepository()
-	s.AddCounter("PollCount", 1)
-	s.AddCounter("PollCount", 5)
+	s.AddCounter(models.PollCount, 1)
+	s.AddCounter(models.PollCount, 5)
 
-	if got := s.Counters()["PollCount"]; got != 6 {
+	if got := s.Counters()[models.PollCount]; got != 6 {
 		t.Fatalf("expected counter 6, got %v", got)
 	}
 }

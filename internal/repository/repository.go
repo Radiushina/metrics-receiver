@@ -2,60 +2,60 @@ package repository
 
 import "sync"
 
-type MemRepository struct {
+type Repository struct {
 	mu       sync.RWMutex
 	gauges   map[string]float64
 	counters map[string]int64
 }
 
-func NewRepository() *MemRepository {
-	return &MemRepository{
+func NewRepository() *Repository {
+	return &Repository{
 		gauges:   make(map[string]float64),
 		counters: make(map[string]int64),
 	}
 }
 
-func (s *MemRepository) SetGauge(name string, value float64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.gauges[name] = value
+func (r *Repository) SetGauge(name string, value float64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.gauges[name] = value
 }
 
-func (s *MemRepository) AddCounter(name string, delta int64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.counters[name] += delta
+func (r *Repository) AddCounter(name string, delta int64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.counters[name] += delta
 }
 
-func (s *MemRepository) GetGauge(name string) (float64, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	v, ok := s.gauges[name]
+func (r *Repository) GetGauge(name string) (float64, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	v, ok := r.gauges[name]
 	return v, ok
 }
 
-func (s *MemRepository) GetCounter(name string) (int64, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	v, ok := s.counters[name]
+func (r *Repository) GetCounter(name string) (int64, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	v, ok := r.counters[name]
 	return v, ok
 }
 
-func (s *MemRepository) Gauges() map[string]float64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := make(map[string]float64, len(s.gauges))
-	for k, v := range s.gauges {
+func (r *Repository) Gauges() map[string]float64 {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make(map[string]float64, len(r.gauges))
+	for k, v := range r.gauges {
 		out[k] = v
 	}
 	return out
 }
 
-func (s *MemRepository) Counters() map[string]int64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := make(map[string]int64, len(s.counters))
-	for k, v := range s.counters {
+func (r *Repository) Counters() map[string]int64 {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make(map[string]int64, len(r.counters))
+	for k, v := range r.counters {
 		out[k] = v
 	}
 	return out

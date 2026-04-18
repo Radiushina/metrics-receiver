@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Radiushina/metrics-receiver.git/internal/handler"
+	models "github.com/Radiushina/metrics-receiver.git/internal/model"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -127,7 +128,7 @@ func TestHandler_PostCounter_OK(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d", rec.Code)
 	}
-	if svc.counter("PollCount") != 3 {
+	if svc.counter(models.PollCount) != 3 {
 		t.Fatalf("stored counter: %v", svc.counter("PollCount"))
 	}
 }
@@ -222,7 +223,7 @@ func TestHandler_GetValue_Counter_OK(t *testing.T) {
 	defer cancel()
 
 	svc := newMockService()
-	svc.AddCounter("PollCount", 7)
+	svc.AddCounter(models.PollCount, 7)
 	mux := newTestMux(svc)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/value/counter/PollCount", nil)
@@ -283,7 +284,7 @@ func TestHandler_GetAll_HTML_ListsMetrics(t *testing.T) {
 
 	svc := newMockService()
 	svc.SetGauge("HeapAlloc", 1.25)
-	svc.AddCounter("PollCount", 4)
+	svc.AddCounter(models.PollCount, 4)
 	mux := newTestMux(svc)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
@@ -294,7 +295,7 @@ func TestHandler_GetAll_HTML_ListsMetrics(t *testing.T) {
 		t.Fatalf("status %d", rec.Code)
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "HeapAlloc") || !strings.Contains(body, "PollCount") {
+	if !strings.Contains(body, "HeapAlloc") || !strings.Contains(body, models.PollCount) {
 		t.Fatalf("missing names in body %q", body)
 	}
 	wantG := strconv.FormatFloat(1.25, 'g', -1, 64)
@@ -308,7 +309,7 @@ func TestHandler_GetAll_HTML_AllCountersListed(t *testing.T) {
 	defer cancel()
 
 	svc := newMockService()
-	svc.AddCounter("PollCount", 1)
+	svc.AddCounter(models.PollCount, 1)
 	svc.AddCounter("OtherCounter", 2)
 	mux := newTestMux(svc)
 

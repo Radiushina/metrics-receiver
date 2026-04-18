@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	models "github.com/Radiushina/metrics-receiver.git/internal/model"
 	"github.com/go-resty/resty/v2"
 )
 
@@ -126,7 +127,7 @@ func main() {
 			}
 
 			if delta > 0 {
-				if err := postIntMetric(client, baseURL, metricTypeCounter, "PollCount", delta); err != nil {
+				if err := postIntMetric(client, baseURL, metricTypeCounter, models.PollCount, delta); err != nil {
 					log.Printf("failed to send counter PollCount+=%d: %v", delta, err)
 				}
 			}
