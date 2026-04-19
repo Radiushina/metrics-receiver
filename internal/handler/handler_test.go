@@ -91,7 +91,9 @@ func newTestMux(svc handler.ServiceProvider) http.Handler {
 	h := handler.NewHandler(svc)
 	r := chi.NewRouter()
 	r.Get("/", h.GetMetrics())
-	r.Post("/update", h.UpdateMetrics())
+	r.Post("/update/{mtype}/{metric}/{value}", h.UpdateFromPath())
+	r.Post("/update", h.UpdateFromBody())
+	r.Get("/value/{mtype}/{metric}", h.GetMetric())
 	r.Post("/value", h.GetMetricValue())
 	return r
 }
@@ -284,6 +286,101 @@ func TestHandler_GetValue_Unknown_NotFound(t *testing.T) {
 		`{"id":"NoSuch","type":"gauge"}`,
 	))
 	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestHandler_UpdatePath_Gauge_OK(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	svc := newMockService()
+	mux := newTestMux(svc)
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/update/gauge/HeapAlloc/42.5", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, body %q", rec.Code, rec.Body.String())
+	}
+	if svc.gauge("HeapAlloc") != 42.5 {
+		t.Fatalf("stored gauge: %v", svc.gauge("HeapAlloc"))
+	}
+}
+
+func TestHandler_UpdatePath_Counter_OK(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	svc := newMockService()
+	mux := newTestMux(svc)
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/update/counter/PollCount/3", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	if svc.counter(models.PollCount) != 3 {
+		t.Fatalf("stored counter: %v", svc.counter("PollCount"))
+	}
+}
+
+func TestHandler_GetPath_Gauge_OK(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	svc := newMockService()
+	svc.SetGauge("HeapAlloc", 42.5)
+	mux := newTestMux(svc)
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/value/gauge/HeapAlloc", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, body %q", rec.Code, rec.Body.String())
+	}
+	want := strconv.FormatFloat(42.5, 'g', -1, 64)
+	if got := rec.Body.String(); got != want {
+		t.Fatalf("body %q, want %q", got, want)
+	}
+}
+
+func TestHandler_GetPath_Counter_OK(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	svc := newMockService()
+	svc.AddCounter(models.PollCount, 7)
+	mux := newTestMux(svc)
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/value/counter/PollCount", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, body %q", rec.Code, rec.Body.String())
+	}
+	if got := rec.Body.String(); got != "7" {
+		t.Fatalf("body %q, want 7", got)
+	}
+}
+
+func TestHandler_GetPath_Unknown_NotFound(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	svc := newMockService()
+	mux := newTestMux(svc)
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/value/gauge/NoSuch", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 

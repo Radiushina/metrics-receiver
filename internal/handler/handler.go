@@ -12,6 +12,7 @@ import (
 
 	"github.com/Radiushina/metrics-receiver.git/internal/logger"
 	"github.com/Radiushina/metrics-receiver.git/internal/model"
+	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 )
 
@@ -77,19 +78,76 @@ func (h *Handler) GetMetrics() http.HandlerFunc {
 	}
 }
 
+func (h *Handler) GetMetric() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		getMetricValue(w, r, h.service)
+	}
+}
+
 func (h *Handler) GetMetricValue() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		getMetric(w, r, h.service)
 	}
 }
 
-func (h *Handler) UpdateMetrics() http.HandlerFunc {
+func (h *Handler) UpdateFromPath() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		updateMetrics(w, r, h.service)
+		updateMetricsFromPath(w, r, h.service)
 	}
 }
 
-func updateMetrics(w http.ResponseWriter, r *http.Request, service ServiceProvider) {
+func (h *Handler) UpdateFromBody() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		updateMetricsFromBody(w, r, h.service)
+	}
+}
+
+func updateMetricsFromPath(w http.ResponseWriter, r *http.Request, service ServiceProvider) {
+	mtype := models.MetricType(strings.ToLower(chi.URLParam(r, "mtype")))
+	metric := chi.URLParam(r, "metric")
+	valueStr := chi.URLParam(r, "value")
+
+	if metric == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	if valueStr == "" {
+		http.Error(w, "missing metric value", http.StatusBadRequest)
+		return
+	}
+
+	if mtype == "" {
+		http.Error(w, "missing metric type", http.StatusBadRequest)
+		return
+	}
+
+	switch mtype {
+	case models.Gauge:
+		v, err := strconv.ParseFloat(valueStr, 64)
+		if err != nil {
+			http.Error(w, "invalid gauge value", http.StatusBadRequest)
+			return
+		}
+		service.SetGauge(metric, v)
+		logger.Log.Sugar().Infof("server: gauge %s = %g", metric, v)
+	case models.Counter:
+		v, err := strconv.ParseInt(valueStr, 10, 64)
+		if err != nil {
+			http.Error(w, "invalid counter value", http.StatusBadRequest)
+			return
+		}
+		service.AddCounter(metric, v)
+		logger.Log.Sugar().Infof("server: counter %s += %d", metric, v)
+	default:
+		http.Error(w, fmt.Sprintf("invalid metric type: %q", mtype), http.StatusBadRequest)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func updateMetricsFromBody(w http.ResponseWriter, r *http.Request, service ServiceProvider) {
 	defer func() { _ = r.Body.Close() }()
 
 	var metrics models.Metrics
@@ -202,6 +260,44 @@ func getMetric(w http.ResponseWriter, r *http.Request, service ServiceProvider) 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(respBody)
+}
+
+func getMetricValue(w http.ResponseWriter, r *http.Request, service ServiceProvider) {
+	mtype := models.MetricType(strings.ToLower(chi.URLParam(r, "mtype")))
+	metric := chi.URLParam(r, "metric")
+
+	if metric == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	if mtype == "" {
+		http.Error(w, "missing metric type", http.StatusBadRequest)
+		return
+	}
+
+	switch mtype {
+	case models.Gauge:
+		v, ok := service.GetGauge(metric)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(strconv.FormatFloat(v, 'g', -1, 64)))
+	case models.Counter:
+		v, ok := service.GetCounter(metric)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(strconv.FormatInt(v, 10)))
+	default:
+		http.Error(w, fmt.Sprintf("invalid metric type: %q", mtype), http.StatusBadRequest)
+	}
 }
 
 func getMetricsValue(w http.ResponseWriter, service ServiceProvider) {
