@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -8,11 +9,8 @@ import (
 	"math"
 	"math/rand"
 	"net/http"
-	"net/url"
 	"os"
 	"runtime"
-	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -51,10 +49,10 @@ var gaugeNames = []string{
 	"TotalAlloc",
 }
 
-const (
+/*const (
 	metricTypeGauge   = "gauge"
 	metricTypeCounter = "counter"
-)
+)*/
 
 func main() {
 	exitCode, err := parseFlags()
@@ -118,16 +116,16 @@ func main() {
 			log.Printf("report: sending %d gauges + RandomValue + PollCount(+%d)…", len(gaugeNames), delta)
 
 			for _, name := range gaugeNames {
-				if err := postMetric(client, baseURL, metricTypeGauge, name, snapshot[name]); err != nil {
+				if err := postMetric(client, baseURL, name, models.Gauge, snapshot[name]); err != nil {
 					log.Printf("failed to send gauge %s=%v: %v", name, snapshot[name], err)
 				}
 			}
-			if err := postMetric(client, baseURL, metricTypeGauge, "RandomValue", snapshot["RandomValue"]); err != nil {
+			if err := postMetric(client, baseURL, "RandomValue", models.Gauge, snapshot["RandomValue"]); err != nil {
 				log.Printf("failed to send gauge RandomValue=%v: %v", snapshot["RandomValue"], err)
 			}
 
 			if delta > 0 {
-				if err := postIntMetric(client, baseURL, metricTypeCounter, models.PollCount, delta); err != nil {
+				if err := postIntMetric(client, baseURL, models.PollCount, models.Counter, delta); err != nil {
 					log.Printf("failed to send counter PollCount+=%d: %v", delta, err)
 				}
 			}
@@ -170,29 +168,47 @@ func updateGaugesFromMemStats(gaugeValues map[string]float64, ms *runtime.MemSta
 	gaugeValues["RandomValue"] = gaugeValues[pick]
 }
 
-func postMetric(client *resty.Client, baseURL, metricType, name string, value float64) error {
+func postMetric(client *resty.Client, baseURL, name string, metricType models.MetricType, value float64) error {
 	if math.IsNaN(value) || math.IsInf(value, 0) {
 		return fmt.Errorf("invalid float value: %v", value)
 	}
-
-	valueStr := strconv.FormatFloat(value, 'g', -1, 64)
-	return basePostMetric(client, baseURL, metricType, name, valueStr)
+	return basePostMetric(client, baseURL, name, metricType, &value, nil)
 }
 
-func postIntMetric(client *resty.Client, baseURL, metricType, name string, value int64) error {
-	valueStr := strconv.FormatInt(value, 10)
-	return basePostMetric(client, baseURL, metricType, name, valueStr)
+func postIntMetric(client *resty.Client, baseURL, name string, metricType models.MetricType, delta int64) error {
+	return basePostMetric(client, baseURL, name, metricType, nil, &delta)
 }
 
-func basePostMetric(client *resty.Client, baseURL, metricType, name, valueStr string) error {
-	nameEsc := url.PathEscape(name)
-	valueEsc := url.PathEscape(valueStr)
-	base := strings.TrimSuffix(baseURL, "/")
-	fullURL := fmt.Sprintf("%s/update/%s/%s/%s", base, metricType, nameEsc, valueEsc)
+func basePostMetric(client *resty.Client, baseURL, name string, metricType models.MetricType, value *float64, delta *int64) error {
+	switch metricType {
+	case models.Gauge:
+		if value == nil || delta != nil {
+			return fmt.Errorf("gauge metric requires value, delta must be omitted")
+		}
+	case models.Counter:
+		if delta == nil || value != nil {
+			return fmt.Errorf("counter metric requires delta, value must be omitted")
+		}
+	default:
+		return fmt.Errorf("unsupported metric type: %q", metricType)
+	}
+
+	metric := models.Metrics{
+		ID:    name,
+		MType: metricType,
+		Delta: delta,
+		Value: value,
+	}
+
+	body, err := json.Marshal(metric)
+	if err != nil {
+		return err
+	}
 
 	resp, err := client.R().
-		SetHeader("Content-Type", "text/plain").
-		Post(fullURL)
+		SetHeader("Content-Type", "application/json").
+		SetBody(body).
+		Post(baseURL)
 	if err != nil {
 		return err
 	}
