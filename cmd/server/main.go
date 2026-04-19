@@ -80,8 +80,9 @@ func NewMux(h *handler.Handler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(logger.LoggingMiddleware)
 	r.Get("/", h.GetMetrics())
-	r.Get("/value/{mtype}/{metric}", h.GetMetric())
-	r.Post("/update/{mtype}/{metric}/{value}", h.UpdateFromPath())
+	//r.Get("/value/{mtype}/{metric}", h.GetMetric())
+	//r.Post("/update/{mtype}/{metric}/{value}", h.UpdateFromPath())
 	r.Post("/update", h.UpdateFromBody())
+	r.Post("/value", h.GetValue())
 	return r
 }

@@ -84,6 +84,12 @@ func (h *Handler) GetMetric() http.HandlerFunc {
 	}
 }
 
+func (h *Handler) GetValue() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		getMetric(w, r, h.service)
+	}
+}
+
 func (h *Handler) UpdateFromPath() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		updateMetricsFromPath(w, r, h.service)
@@ -142,7 +148,7 @@ func updateMetricsFromPath(w http.ResponseWriter, r *http.Request, service Servi
 }
 
 func updateMetricsFromBody(w http.ResponseWriter, r *http.Request, service ServiceProvider) {
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	var metrics models.Metrics
 	var buf bytes.Buffer
@@ -189,7 +195,7 @@ func updateMetricsFromBody(w http.ResponseWriter, r *http.Request, service Servi
 		http.Error(w, fmt.Sprintf("invalid metric type: %q", mtype), http.StatusBadRequest)
 		return
 	}
-
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -229,6 +235,69 @@ func getMetricValue(w http.ResponseWriter, r *http.Request, service ServiceProvi
 	default:
 		http.Error(w, fmt.Sprintf("invalid metric type: %q", mtype), http.StatusBadRequest)
 	}
+}
+
+func getMetric(w http.ResponseWriter, r *http.Request, service ServiceProvider) {
+	defer func() { _ = r.Body.Close() }()
+
+	var req models.Metrics
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(r.Body); err != nil {
+		http.Error(w, "failed to read body", http.StatusBadRequest)
+		return
+	}
+
+	logger.Log.Info("metric value request body", zap.String("body", string(buf.Bytes())))
+
+	if err := json.Unmarshal(buf.Bytes(), &req); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if req.ID == "" {
+		http.Error(w, "missing metric id", http.StatusBadRequest)
+		return
+	}
+
+	mtype := models.MetricType(strings.ToLower(string(req.MType)))
+	if mtype == "" {
+		http.Error(w, "missing metric type", http.StatusBadRequest)
+		return
+	}
+
+	out := models.Metrics{
+		ID:    req.ID,
+		MType: mtype,
+	}
+
+	switch mtype {
+	case models.Gauge:
+		v, ok := service.GetGauge(req.ID)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		out.Value = &v
+	case models.Counter:
+		v, ok := service.GetCounter(req.ID)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		out.Delta = &v
+	default:
+		http.Error(w, fmt.Sprintf("invalid metric type: %q", mtype), http.StatusBadRequest)
+		return
+	}
+
+	respBody, err := json.Marshal(out)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(respBody)
 }
 
 func getMetricsValue(w http.ResponseWriter, service ServiceProvider) {

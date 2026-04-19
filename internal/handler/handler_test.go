@@ -2,6 +2,7 @@ package handler_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -90,8 +91,8 @@ func newTestMux(svc handler.ServiceProvider) http.Handler {
 	h := handler.NewHandler(svc)
 	r := chi.NewRouter()
 	r.Get("/", h.GetMetrics())
-	r.Post("/update/{mtype}/{metric}/{value}", h.UpdateFromPath())
-	r.Get("/value/{mtype}/{metric}", h.GetMetric())
+	r.Post("/update", h.UpdateFromBody())
+	r.Post("/value", h.GetValue())
 	return r
 }
 
@@ -102,7 +103,10 @@ func TestHandler_PostGauge_OK(t *testing.T) {
 	svc := newMockService()
 	mux := newTestMux(svc)
 
-	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/update/gauge/HeapAlloc/42.5", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/update", strings.NewReader(
+		`{"id":"HeapAlloc","type":"gauge","value":42.5}`,
+	))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -121,7 +125,10 @@ func TestHandler_PostCounter_OK(t *testing.T) {
 	svc := newMockService()
 	mux := newTestMux(svc)
 
-	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/update/counter/PollCount/3", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/update", strings.NewReader(
+		`{"id":"PollCount","type":"counter","delta":3}`,
+	))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -140,7 +147,10 @@ func TestHandler_InvalidGaugeValue_BadRequest(t *testing.T) {
 	svc := newMockService()
 	mux := newTestMux(svc)
 
-	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/update/gauge/x/not-a-float", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/update", strings.NewReader(
+		`{"id":"x","type":"gauge","value":"not-a-float"}`,
+	))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -156,7 +166,10 @@ func TestHandler_InvalidCounterValue_BadRequest(t *testing.T) {
 	svc := newMockService()
 	mux := newTestMux(svc)
 
-	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/update/counter/x/1.5", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/update", strings.NewReader(
+		`{"id":"x","type":"counter","delta":1.5}`,
+	))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -172,7 +185,10 @@ func TestHandler_InvalidType_BadRequest(t *testing.T) {
 	svc := newMockService()
 	mux := newTestMux(svc)
 
-	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/update/unknown/m/1", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/update", strings.NewReader(
+		`{"id":"m","type":"unknown","value":1}`,
+	))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -188,7 +204,7 @@ func TestHandler_GetMethod_MethodNotAllowed(t *testing.T) {
 	svc := newMockService()
 	mux := newTestMux(svc)
 
-	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/update/gauge/x/1", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/update", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
@@ -205,16 +221,28 @@ func TestHandler_GetValue_Gauge_OK(t *testing.T) {
 	svc.SetGauge("HeapAlloc", 42.5)
 	mux := newTestMux(svc)
 
-	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/value/gauge/HeapAlloc", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/value", strings.NewReader(
+		`{"id":"HeapAlloc","type":"gauge"}`,
+	))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d, body %q", rec.Code, rec.Body.String())
 	}
-	want := strconv.FormatFloat(42.5, 'g', -1, 64)
-	if got := rec.Body.String(); got != want {
-		t.Fatalf("body %q, want %q", got, want)
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("Content-Type %q", ct)
+	}
+	var out models.Metrics
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.ID != "HeapAlloc" || out.MType != models.Gauge || out.Value == nil || out.Delta != nil {
+		t.Fatalf("response %+v", out)
+	}
+	if *out.Value != 42.5 {
+		t.Fatalf("value %v", *out.Value)
 	}
 }
 
@@ -226,15 +254,22 @@ func TestHandler_GetValue_Counter_OK(t *testing.T) {
 	svc.AddCounter(models.PollCount, 7)
 	mux := newTestMux(svc)
 
-	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/value/counter/PollCount", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/value", strings.NewReader(
+		`{"id":"PollCount","type":"counter"}`,
+	))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d, body %q", rec.Code, rec.Body.String())
 	}
-	if got := rec.Body.String(); got != "7" {
-		t.Fatalf("body %q, want 7", got)
+	var out models.Metrics
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.ID != models.PollCount || out.MType != models.Counter || out.Value != nil || out.Delta == nil || *out.Delta != 7 {
+		t.Fatalf("response %+v", out)
 	}
 }
 
@@ -245,7 +280,10 @@ func TestHandler_GetValue_Unknown_NotFound(t *testing.T) {
 	svc := newMockService()
 	mux := newTestMux(svc)
 
-	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/value/gauge/NoSuch", nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/value", strings.NewReader(
+		`{"id":"NoSuch","type":"gauge"}`,
+	))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 

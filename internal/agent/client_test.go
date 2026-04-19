@@ -1,6 +1,8 @@
-package main
+package agent_test
 
 import (
+	"encoding/json"
+	"io"
 	"math"
 	"math/rand"
 	"net/http"
@@ -9,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Radiushina/metrics-receiver.git/internal/agent"
 	models "github.com/Radiushina/metrics-receiver.git/internal/model"
 	"github.com/go-resty/resty/v2"
 )
@@ -46,7 +49,7 @@ func TestUpdateGaugesFromMemStats_MapsMemStats(t *testing.T) {
 	}
 
 	m := make(map[string]float64)
-	updateGaugesFromMemStats(m, ms, rnd)
+	models.UpdateGaugesFromMemStats(m, ms, rnd)
 
 	if m["Alloc"] != 101 {
 		t.Fatalf("Alloc: got %v", m["Alloc"])
@@ -60,7 +63,7 @@ func TestUpdateGaugesFromMemStats_MapsMemStats(t *testing.T) {
 
 	rv := m["RandomValue"]
 	matched := false
-	for _, n := range gaugeNames {
+	for _, n := range models.GaugeNames {
 		if m[n] == rv {
 			matched = true
 			break
@@ -76,18 +79,26 @@ func TestPostMetric_OK(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method %s", r.Method)
 		}
-		if r.Header.Get("Content-Type") != "text/plain" {
+		if r.Header.Get("Content-Type") != "application/json" {
 			t.Errorf("Content-Type %q", r.Header.Get("Content-Type"))
 		}
-		if r.URL.Path != "/update/gauge/foo/1.5" {
+		if r.URL.Path != "/update" {
 			t.Errorf("path %s", r.URL.Path)
+		}
+		b, _ := io.ReadAll(r.Body)
+		var m models.Metrics
+		if err := json.Unmarshal(b, &m); err != nil {
+			t.Fatalf("body: %v", err)
+		}
+		if m.ID != "foo" || m.MType != models.Gauge || m.Value == nil || *m.Value != 1.5 || m.Delta != nil {
+			t.Fatalf("metric %+v", m)
 		}
 		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(srv.Close)
 
 	client := resty.New().SetTimeout(5 * time.Second)
-	err := postMetric(client, srv.URL, metricTypeGauge, "foo", 1.5)
+	err := agent.PostMetric(client, srv.URL, "foo", models.Gauge, 1.5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +106,7 @@ func TestPostMetric_OK(t *testing.T) {
 
 func TestPostMetric_NaN(t *testing.T) {
 	client := resty.New()
-	err := postMetric(client, "http://unused", metricTypeGauge, "x", math.NaN())
+	err := agent.PostMetric(client, "http://unused", "x", models.Gauge, math.NaN())
 	if err == nil {
 		t.Fatal("expected error for NaN")
 	}
@@ -108,7 +119,7 @@ func TestPostMetric_NonOKStatus(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	client := resty.New().SetTimeout(5 * time.Second)
-	err := postMetric(client, srv.URL, metricTypeGauge, "a", 1)
+	err := agent.PostMetric(client, srv.URL, "a", models.Gauge, 1)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -116,15 +127,23 @@ func TestPostMetric_NonOKStatus(t *testing.T) {
 
 func TestPostIntMetric_OK(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/update/counter/PollCount/7" {
+		if r.URL.Path != "/update" {
 			t.Errorf("path %s", r.URL.Path)
+		}
+		b, _ := io.ReadAll(r.Body)
+		var m models.Metrics
+		if err := json.Unmarshal(b, &m); err != nil {
+			t.Fatalf("body: %v", err)
+		}
+		if m.ID != models.PollCount || m.MType != models.Counter || m.Value != nil || m.Delta == nil || *m.Delta != 7 {
+			t.Fatalf("metric %+v", m)
 		}
 		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(srv.Close)
 
 	client := resty.New().SetTimeout(5 * time.Second)
-	err := postIntMetric(client, srv.URL, metricTypeCounter, models.PollCount, 7)
+	err := agent.PostIntMetric(client, srv.URL, models.PollCount, models.Counter, 7)
 	if err != nil {
 		t.Fatal(err)
 	}

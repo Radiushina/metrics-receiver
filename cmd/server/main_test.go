@@ -3,6 +3,7 @@ package main_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,10 +25,13 @@ func TestNewMux_PostGauge_OK(t *testing.T) {
 	ts := httptest.NewServer(main.NewMux(h))
 	t.Cleanup(ts.Close)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ts.URL+"/update/gauge/HeapAlloc/12", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ts.URL+"/update", strings.NewReader(
+		`{"id":"HeapAlloc","type":"gauge","value":12}`,
+	))
 	if err != nil {
 		t.Fatal(err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -50,10 +54,13 @@ func TestNewMux_PostCounter_OK(t *testing.T) {
 	ts := httptest.NewServer(main.NewMux(h))
 	t.Cleanup(ts.Close)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ts.URL+"/update/counter/PollCount/1", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ts.URL+"/update", strings.NewReader(
+		`{"id":"PollCount","type":"counter","delta":1}`,
+	))
 	if err != nil {
 		t.Fatal(err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -76,10 +83,13 @@ func TestNewMux_InvalidType_BadRequest(t *testing.T) {
 	ts := httptest.NewServer(main.NewMux(h))
 	t.Cleanup(ts.Close)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ts.URL+"/update/bad/x/1", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ts.URL+"/update", strings.NewReader(
+		`{"id":"x","type":"unknown","value":1}`,
+	))
 	if err != nil {
 		t.Fatal(err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
