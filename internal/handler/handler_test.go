@@ -91,8 +91,8 @@ func newTestMux(svc handler.ServiceProvider) http.Handler {
 	h := handler.NewHandler(svc)
 	r := chi.NewRouter()
 	r.Get("/", h.GetMetrics())
-	r.Post("/update", h.UpdateFromBody())
-	r.Post("/value", h.GetValue())
+	r.Post("/update", h.UpdateMetrics())
+	r.Post("/value", h.GetMetricValue())
 	return r
 }
 
