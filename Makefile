@@ -1,6 +1,6 @@
 BINARY = metrics-server
 
-.PHONY: run run-server run-agent run-all build build-server build-agent test-iter1 test-iter2 test-iter3 unit
+.PHONY: run run-server run-agent run-all build build-server build-agent test-iter1 test-iter2 test-iter3 test-iter7 unit
 
 run: run-server
 
@@ -29,6 +29,19 @@ test-iter2: build-agent
 
 test-iter3: build-server build-agent
 	./metricstest -test.v -test.run=^TestIteration3[AB]*$$ -source-path=. -agent-binary-path=cmd/agent/agent -binary-path=cmd/server/server
+
+# Same flags as .github/workflows/mertricstest.yml ("Code increment #7").
+# SERVER_PORT=8080, ADDRESS=localhost:8080 — override port: ITER7_SERVER_PORT=9090 make test-iter7
+test-iter7: build-server build-agent
+	@SERVER_PORT="$${ITER7_SERVER_PORT:-8080}"; \
+	export SERVER_PORT; \
+	export ADDRESS="localhost:$$SERVER_PORT"; \
+	export TEMP_FILE="$$(mktemp)"; \
+	./metricstest -test.v -test.run='^TestIteration7$$' \
+		-agent-binary-path=cmd/agent/agent \
+		-binary-path=cmd/server/server \
+		-server-port="$$SERVER_PORT" \
+		-source-path=.
 
 unit:
 	go test ./...

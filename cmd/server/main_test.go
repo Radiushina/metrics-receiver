@@ -101,3 +101,49 @@ func TestNewMux_InvalidType_BadRequest(t *testing.T) {
 		t.Fatalf("expected 400, got %d", resp.StatusCode)
 	}
 }
+
+func TestNewMux_JSONEndpoints_TrailingSlash_OK(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	repo := repository.NewRepository()
+	svc := service.NewService(repo)
+	h := handler.NewHandler(svc)
+	ts := httptest.NewServer(main.NewMux(h))
+	t.Cleanup(ts.Close)
+
+	upd, err := http.NewRequestWithContext(ctx, http.MethodPost, ts.URL+"/update/", strings.NewReader(
+		`{"id":"HeapAlloc","type":"gauge","value":1}`,
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	upd.Header.Set("Content-Type", "application/json")
+	updResp, err := http.DefaultClient.Do(upd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updResp.Body.Close()
+	if updResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /update/: status %d", updResp.StatusCode)
+	}
+
+	val, err := http.NewRequestWithContext(ctx, http.MethodPost, ts.URL+"/value/", strings.NewReader(
+		`{"id":"HeapAlloc","type":"gauge"}`,
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	val.Header.Set("Content-Type", "application/json")
+	valResp, err := http.DefaultClient.Do(val)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer valResp.Body.Close()
+	if valResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST /value/: status %d", valResp.StatusCode)
+	}
+	if ct := valResp.Header.Get("Content-Type"); !strings.Contains(ct, "application/json") {
+		t.Fatalf("Content-Type: %q", ct)
+	}
+}

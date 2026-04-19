@@ -176,6 +176,7 @@ func updateMetricsFromBody(w http.ResponseWriter, r *http.Request, service Servi
 		return
 	}
 
+	var out models.Metrics
 	switch mtype {
 	case models.Counter:
 		if metrics.Delta == nil {
@@ -184,6 +185,16 @@ func updateMetricsFromBody(w http.ResponseWriter, r *http.Request, service Servi
 		}
 		service.AddCounter(metrics.ID, *metrics.Delta)
 		logger.Log.Sugar().Infof("server: counter %s += %d", metrics.ID, *metrics.Delta)
+		total, ok := service.GetCounter(metrics.ID)
+		if !ok {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		out = models.Metrics{
+			ID:    metrics.ID,
+			MType: models.Counter,
+			Delta: &total,
+		}
 	case models.Gauge:
 		if metrics.Value == nil {
 			http.Error(w, "missing gauge value", http.StatusBadRequest)
@@ -191,12 +202,25 @@ func updateMetricsFromBody(w http.ResponseWriter, r *http.Request, service Servi
 		}
 		service.SetGauge(metrics.ID, *metrics.Value)
 		logger.Log.Sugar().Infof("server: gauge %s = %g", metrics.ID, *metrics.Value)
+		v := *metrics.Value
+		out = models.Metrics{
+			ID:    metrics.ID,
+			MType: models.Gauge,
+			Value: &v,
+		}
 	default:
 		http.Error(w, fmt.Sprintf("invalid metric type: %q", mtype), http.StatusBadRequest)
 		return
 	}
+
+	respBody, err := json.Marshal(out)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(respBody)
 }
 
 func getMetric(w http.ResponseWriter, r *http.Request, service ServiceProvider) {

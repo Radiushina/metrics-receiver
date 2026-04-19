@@ -82,7 +82,9 @@ func NewMux(h *handler.Handler) http.Handler {
 	r.Get("/", h.GetMetrics())
 	r.Post("/update/{mtype}/{metric}/{value}", h.UpdateFromPath())
 	r.Post("/update", h.UpdateFromBody())
+	r.Post("/update/", h.UpdateFromBody())
 	r.Get("/value/{mtype}/{metric}", h.GetMetric())
 	r.Post("/value", h.GetMetricValue())
+	r.Post("/value/", h.GetMetricValue())
 	return r
 }

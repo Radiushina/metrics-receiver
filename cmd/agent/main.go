@@ -66,7 +66,7 @@ func main() {
 	}()
 
 	go func() {
-		for range reportTicker.C {
+		report := func() {
 			delta := atomic.SwapInt64(&pollCountDelta, 0)
 
 			mu.Lock()
@@ -87,11 +87,15 @@ func main() {
 				log.Printf("failed to send gauge RandomValue=%v: %v", snapshot["RandomValue"], err)
 			}
 
-			if delta > 0 {
-				if err := agent.PostIntMetric(client, baseURL, models.PollCount, models.Counter, delta); err != nil {
-					log.Printf("failed to send counter PollCount+=%d: %v", delta, err)
-				}
+			if err := agent.PostIntMetric(client, baseURL, models.PollCount, models.Counter, delta); err != nil {
+				log.Printf("failed to send counter PollCount+=%d: %v", delta, err)
+				atomic.AddInt64(&pollCountDelta, delta)
 			}
+		}
+
+		report()
+		for range reportTicker.C {
+			report()
 		}
 	}()
 

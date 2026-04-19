@@ -93,8 +93,10 @@ func newTestMux(svc handler.ServiceProvider) http.Handler {
 	r.Get("/", h.GetMetrics())
 	r.Post("/update/{mtype}/{metric}/{value}", h.UpdateFromPath())
 	r.Post("/update", h.UpdateFromBody())
+	r.Post("/update/", h.UpdateFromBody())
 	r.Get("/value/{mtype}/{metric}", h.GetMetric())
 	r.Post("/value", h.GetMetricValue())
+	r.Post("/value/", h.GetMetricValue())
 	return r
 }
 
@@ -114,6 +116,13 @@ func TestHandler_PostGauge_OK(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d, body %q", rec.Code, rec.Body.String())
+	}
+	var got models.Metrics
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("response JSON: %v", err)
+	}
+	if got.ID != "HeapAlloc" || got.MType != models.Gauge || got.Value == nil || *got.Value != 42.5 {
+		t.Fatalf("response body: %+v", got)
 	}
 	if svc.gauge("HeapAlloc") != 42.5 {
 		t.Fatalf("stored gauge: %v", svc.gauge("HeapAlloc"))
@@ -136,6 +145,13 @@ func TestHandler_PostCounter_OK(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d", rec.Code)
+	}
+	var got models.Metrics
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("response JSON: %v", err)
+	}
+	if got.ID != models.PollCount || got.MType != models.Counter || got.Delta == nil || *got.Delta != 3 {
+		t.Fatalf("response body: %+v", got)
 	}
 	if svc.counter(models.PollCount) != 3 {
 		t.Fatalf("stored counter: %v", svc.counter("PollCount"))
