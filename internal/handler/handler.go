@@ -2,16 +2,18 @@ package handler
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"html/template"
-	"log"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/Radiushina/metrics-receiver.git/internal/logger"
 	"github.com/Radiushina/metrics-receiver.git/internal/model"
 	"github.com/go-chi/chi/v5"
+	"go.uber.org/zap"
 )
 
 type metricRow struct {
@@ -82,14 +84,20 @@ func (h *Handler) GetMetric() http.HandlerFunc {
 	}
 }
 
-func (h *Handler) Update() http.HandlerFunc {
+func (h *Handler) UpdateFromPath() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		updateMetrics(w, r, h.service)
+		updateMetricsFromPath(w, r, h.service)
 	}
 }
 
-func updateMetrics(w http.ResponseWriter, r *http.Request, service ServiceProvider) {
-	mtype := strings.ToLower(chi.URLParam(r, "mtype"))
+func (h *Handler) UpdateFromBody() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		updateMetricsFromBody(w, r, h.service)
+	}
+}
+
+func updateMetricsFromPath(w http.ResponseWriter, r *http.Request, service ServiceProvider) {
+	mtype := models.MetricType(strings.ToLower(chi.URLParam(r, "mtype")))
 	metric := chi.URLParam(r, "metric")
 	valueStr := chi.URLParam(r, "value")
 
@@ -103,6 +111,11 @@ func updateMetrics(w http.ResponseWriter, r *http.Request, service ServiceProvid
 		return
 	}
 
+	if mtype == "" {
+		http.Error(w, "missing metric type", http.StatusBadRequest)
+		return
+	}
+
 	switch mtype {
 	case models.Gauge:
 		v, err := strconv.ParseFloat(valueStr, 64)
@@ -111,7 +124,7 @@ func updateMetrics(w http.ResponseWriter, r *http.Request, service ServiceProvid
 			return
 		}
 		service.SetGauge(metric, v)
-		log.Printf("server: gauge %s = %g", metric, v)
+		logger.Log.Sugar().Infof("server: gauge %s = %g", metric, v)
 	case models.Counter:
 		v, err := strconv.ParseInt(valueStr, 10, 64)
 		if err != nil {
@@ -119,12 +132,60 @@ func updateMetrics(w http.ResponseWriter, r *http.Request, service ServiceProvid
 			return
 		}
 		service.AddCounter(metric, v)
-		log.Printf("server: counter %s += %d", metric, v)
+		logger.Log.Sugar().Infof("server: counter %s += %d", metric, v)
 	default:
-		if mtype == "" {
-			http.Error(w, "missing metric type", http.StatusBadRequest)
+		http.Error(w, fmt.Sprintf("invalid metric type: %q", mtype), http.StatusBadRequest)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func updateMetricsFromBody(w http.ResponseWriter, r *http.Request, service ServiceProvider) {
+	defer r.Body.Close()
+
+	var metrics models.Metrics
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(r.Body); err != nil {
+		http.Error(w, "failed to read body", http.StatusBadRequest)
+		return
+	}
+
+	logger.Log.Info("metrics update request body", zap.String("body", string(buf.Bytes())))
+
+	if err := json.Unmarshal(buf.Bytes(), &metrics); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if metrics.ID == "" {
+		http.Error(w, "missing metric id", http.StatusBadRequest)
+		return
+	}
+
+	mtype := models.MetricType(strings.ToLower(string(metrics.MType)))
+
+	if mtype == "" {
+		http.Error(w, "missing metric type", http.StatusBadRequest)
+		return
+	}
+
+	switch mtype {
+	case models.Counter:
+		if metrics.Delta == nil {
+			http.Error(w, "missing counter delta", http.StatusBadRequest)
 			return
 		}
+		service.AddCounter(metrics.ID, *metrics.Delta)
+		logger.Log.Sugar().Infof("server: counter %s += %d", metrics.ID, *metrics.Delta)
+	case models.Gauge:
+		if metrics.Value == nil {
+			http.Error(w, "missing gauge value", http.StatusBadRequest)
+			return
+		}
+		service.SetGauge(metrics.ID, *metrics.Value)
+		logger.Log.Sugar().Infof("server: gauge %s = %g", metrics.ID, *metrics.Value)
+	default:
 		http.Error(w, fmt.Sprintf("invalid metric type: %q", mtype), http.StatusBadRequest)
 		return
 	}
@@ -133,11 +194,16 @@ func updateMetrics(w http.ResponseWriter, r *http.Request, service ServiceProvid
 }
 
 func getMetricValue(w http.ResponseWriter, r *http.Request, service ServiceProvider) {
-	mtype := strings.ToLower(chi.URLParam(r, "mtype"))
+	mtype := models.MetricType(strings.ToLower(chi.URLParam(r, "mtype")))
 	metric := chi.URLParam(r, "metric")
 
 	if metric == "" {
 		http.NotFound(w, r)
+		return
+	}
+
+	if mtype == "" {
+		http.Error(w, "missing metric type", http.StatusBadRequest)
 		return
 	}
 
@@ -161,10 +227,6 @@ func getMetricValue(w http.ResponseWriter, r *http.Request, service ServiceProvi
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(strconv.FormatInt(v, 10)))
 	default:
-		if mtype == "" {
-			http.Error(w, "missing metric type", http.StatusBadRequest)
-			return
-		}
 		http.Error(w, fmt.Sprintf("invalid metric type: %q", mtype), http.StatusBadRequest)
 	}
 }
@@ -202,7 +264,7 @@ func getMetricsValue(w http.ResponseWriter, service ServiceProvider) {
 	var buf bytes.Buffer
 	data := metricsIndexData{Gauges: gRows, Counters: cRows}
 	if err := metricsIndexTmpl.Execute(&buf, data); err != nil {
-		log.Printf("metrics index template: %v", err)
+		logger.Log.Error("metrics index template", zap.Error(err))
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
