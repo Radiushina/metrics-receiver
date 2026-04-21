@@ -1,6 +1,6 @@
 BINARY = metrics-server
 
-.PHONY: run run-server run-agent run-all build build-server build-agent test-iter1 test-iter2 test-iter3 test-iter7 unit
+.PHONY: run run-server run-agent run-all build build-server build-agent test-iter1 test-iter2 test-iter3 test-iter7 test-iter8 unit
 
 run: run-server
 
@@ -38,6 +38,17 @@ test-iter7: build-server build-agent
 	export ADDRESS="localhost:$$SERVER_PORT"; \
 	export TEMP_FILE="$$(mktemp)"; \
 	./metricstest -test.v -test.run='^TestIteration7$$' \
+		-agent-binary-path=cmd/agent/agent \
+		-binary-path=cmd/server/server \
+		-server-port="$$SERVER_PORT" \
+		-source-path=.
+
+test-iter8: build-server build-agent
+	@SERVER_PORT="$${ITER8_SERVER_PORT:-8080}"; \
+	export SERVER_PORT; \
+	export ADDRESS="localhost:$$SERVER_PORT"; \
+	export TEMP_FILE="$$(mktemp)"; \
+	./metricstest -test.v -test.run='^TestIteration8$$' \
 		-agent-binary-path=cmd/agent/agent \
 		-binary-path=cmd/server/server \
 		-server-port="$$SERVER_PORT" \

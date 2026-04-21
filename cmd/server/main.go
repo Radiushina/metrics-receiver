@@ -14,6 +14,7 @@ import (
 
 	"github.com/Radiushina/metrics-receiver.git/internal/handler"
 	"github.com/Radiushina/metrics-receiver.git/internal/logger"
+	"github.com/Radiushina/metrics-receiver.git/internal/middleware"
 	"github.com/Radiushina/metrics-receiver.git/internal/repository"
 	"github.com/Radiushina/metrics-receiver.git/internal/service"
 	"github.com/go-chi/chi/v5"
@@ -78,7 +79,9 @@ func run() error {
 
 func NewMux(h *handler.Handler) http.Handler {
 	r := chi.NewRouter()
+	r.Use(middleware.DecompressRequest)
 	r.Use(logger.LoggingMiddleware)
+	r.Use(middleware.CompressResponse)
 	r.Get("/", h.GetMetrics())
 	r.Post("/update/{mtype}/{metric}/{value}", h.UpdateFromPath())
 	r.Post("/update", h.UpdateFromBody())

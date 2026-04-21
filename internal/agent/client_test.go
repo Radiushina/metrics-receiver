@@ -1,6 +1,7 @@
 package agent_test
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"io"
 	"math"
@@ -82,10 +83,18 @@ func TestPostMetric_OK(t *testing.T) {
 		if r.Header.Get("Content-Type") != "application/json" {
 			t.Errorf("Content-Type %q", r.Header.Get("Content-Type"))
 		}
+		if r.Header.Get("Content-Encoding") != "gzip" {
+			t.Errorf("Content-Encoding %q", r.Header.Get("Content-Encoding"))
+		}
 		if r.URL.Path != "/update" {
 			t.Errorf("path %s", r.URL.Path)
 		}
-		b, _ := io.ReadAll(r.Body)
+		zr, err := gzip.NewReader(r.Body)
+		if err != nil {
+			t.Fatalf("gzip reader: %v", err)
+		}
+		b, _ := io.ReadAll(zr)
+		_ = zr.Close()
 		var m models.Metrics
 		if err := json.Unmarshal(b, &m); err != nil {
 			t.Fatalf("body: %v", err)
@@ -130,7 +139,15 @@ func TestPostIntMetric_OK(t *testing.T) {
 		if r.URL.Path != "/update" {
 			t.Errorf("path %s", r.URL.Path)
 		}
-		b, _ := io.ReadAll(r.Body)
+		if r.Header.Get("Content-Encoding") != "gzip" {
+			t.Errorf("Content-Encoding %q", r.Header.Get("Content-Encoding"))
+		}
+		zr, err := gzip.NewReader(r.Body)
+		if err != nil {
+			t.Fatalf("gzip reader: %v", err)
+		}
+		b, _ := io.ReadAll(zr)
+		_ = zr.Close()
 		var m models.Metrics
 		if err := json.Unmarshal(b, &m); err != nil {
 			t.Fatalf("body: %v", err)

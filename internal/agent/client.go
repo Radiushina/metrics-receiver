@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -48,6 +50,11 @@ func basePostMetric(client *resty.Client, baseURL, name string, metricType model
 		return err
 	}
 
+	gzBody, err := gzipBytes(body)
+	if err != nil {
+		return err
+	}
+
 	fullURL, err := url.JoinPath(baseURL, "update")
 	if err != nil {
 		return err
@@ -55,7 +62,9 @@ func basePostMetric(client *resty.Client, baseURL, name string, metricType model
 
 	resp, err := client.R().
 		SetHeader("Content-Type", "application/json").
-		SetBody(body).
+		SetHeader("Content-Encoding", "gzip").
+		SetHeader("Accept-Encoding", "gzip").
+		SetBody(gzBody).
 		Post(fullURL)
 	if err != nil {
 		return err
@@ -64,4 +73,17 @@ func basePostMetric(client *resty.Client, baseURL, name string, metricType model
 		return fmt.Errorf("unexpected status %s", resp.Status())
 	}
 	return nil
+}
+
+func gzipBytes(src []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if _, err := zw.Write(src); err != nil {
+		_ = zw.Close()
+		return nil, err
+	}
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
