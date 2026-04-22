@@ -12,8 +12,11 @@ import (
 )
 
 var (
-	flagRunAddr  string
-	flagLogLevel string
+	flagRunAddr          string
+	flagLogLevel         string
+	flagStoreIntervalSec int
+	flagFileStoragePath  string
+	flagRestore          bool
 )
 
 func parseFlags() (exitCode int, err error) {
@@ -24,6 +27,9 @@ func parseFlags() (exitCode int, err error) {
 
 	fs.StringVar(&flagRunAddr, "a", ":8080", "address and port to run server")
 	fs.StringVar(&flagLogLevel, "l", "info", "log level")
+	fs.IntVar(&flagStoreIntervalSec, "i", 300, "store interval in seconds (0 means synchronous)")
+	fs.StringVar(&flagFileStoragePath, "f", "./metrics-db.json", "file path to persist metrics")
+	fs.BoolVar(&flagRestore, "r", false, "restore persisted metrics on startup")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -39,9 +45,27 @@ func parseFlags() (exitCode int, err error) {
 	if envCfg.RunAddr != nil {
 		flagRunAddr = strings.TrimSpace(*envCfg.RunAddr)
 	}
+	if envCfg.StoreInterval != nil {
+		flagStoreIntervalSec = *envCfg.StoreInterval
+	}
+	if envCfg.FileStoragePath != nil {
+		flagFileStoragePath = strings.TrimSpace(*envCfg.FileStoragePath)
+	}
+	if envCfg.Restore != nil {
+		flagRestore = *envCfg.Restore
+	}
 
 	if envLogLevel := os.Getenv("LOG_LEVEL"); envLogLevel != "" {
 		flagLogLevel = envLogLevel
+	}
+
+	flagRunAddr = strings.TrimSpace(flagRunAddr)
+	flagFileStoragePath = strings.TrimSpace(flagFileStoragePath)
+	if flagStoreIntervalSec < 0 {
+		return 1, fmt.Errorf("STORE_INTERVAL must be non-negative, got %d", flagStoreIntervalSec)
+	}
+	if flagFileStoragePath == "" {
+		return 1, fmt.Errorf("FILE_STORAGE_PATH must be non-empty")
 	}
 
 	return 0, nil
