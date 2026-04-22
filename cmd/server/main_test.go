@@ -26,7 +26,7 @@ func TestNewMux_PostGauge_OK(t *testing.T) {
 
 	repo := repository.NewRepository()
 	svc := service.NewService(repo)
-	h := handler.NewHandler(svc)
+	h := handler.NewHandler(svc, nil)
 	ts := httptest.NewServer(main.NewMux(h))
 	t.Cleanup(ts.Close)
 
@@ -55,7 +55,7 @@ func TestNewMux_PostCounter_OK(t *testing.T) {
 
 	repo := repository.NewRepository()
 	svc := service.NewService(repo)
-	h := handler.NewHandler(svc)
+	h := handler.NewHandler(svc, nil)
 	ts := httptest.NewServer(main.NewMux(h))
 	t.Cleanup(ts.Close)
 
@@ -84,7 +84,7 @@ func TestNewMux_InvalidType_BadRequest(t *testing.T) {
 
 	repo := repository.NewRepository()
 	svc := service.NewService(repo)
-	h := handler.NewHandler(svc)
+	h := handler.NewHandler(svc, nil)
 	ts := httptest.NewServer(main.NewMux(h))
 	t.Cleanup(ts.Close)
 
@@ -113,7 +113,7 @@ func TestNewMux_JSONEndpoints_TrailingSlash_OK(t *testing.T) {
 
 	repo := repository.NewRepository()
 	svc := service.NewService(repo)
-	h := handler.NewHandler(svc)
+	h := handler.NewHandler(svc, nil)
 	ts := httptest.NewServer(main.NewMux(h))
 	t.Cleanup(ts.Close)
 
@@ -159,7 +159,7 @@ func TestNewMux_GzipRequestBody_OK(t *testing.T) {
 
 	repo := repository.NewRepository()
 	svc := service.NewService(repo)
-	h := handler.NewHandler(svc)
+	h := handler.NewHandler(svc, nil)
 	ts := httptest.NewServer(main.NewMux(h))
 	t.Cleanup(ts.Close)
 
@@ -198,7 +198,7 @@ func TestNewMux_GzipResponse_JSON_WhenAccepted(t *testing.T) {
 
 	repo := repository.NewRepository()
 	svc := service.NewService(repo)
-	h := handler.NewHandler(svc)
+	h := handler.NewHandler(svc, nil)
 	ts := httptest.NewServer(main.NewMux(h))
 	t.Cleanup(ts.Close)
 
@@ -259,7 +259,7 @@ func TestNewMux_GzipResponse_HTML_WhenAccepted(t *testing.T) {
 
 	repo := repository.NewRepository()
 	svc := service.NewService(repo)
-	h := handler.NewHandler(svc)
+	h := handler.NewHandler(svc, nil)
 	ts := httptest.NewServer(main.NewMux(h))
 	t.Cleanup(ts.Close)
 
@@ -303,7 +303,7 @@ func TestNewMux_DoesNotGzipTextPlain(t *testing.T) {
 	repo := repository.NewRepository()
 	svc := service.NewService(repo)
 	svc.SetGauge("HeapAlloc", 42.5)
-	h := handler.NewHandler(svc)
+	h := handler.NewHandler(svc, nil)
 	ts := httptest.NewServer(main.NewMux(h))
 	t.Cleanup(ts.Close)
 

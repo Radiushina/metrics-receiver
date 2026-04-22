@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -54,6 +55,7 @@ var metricsIndexTmpl = template.Must(template.New("metricsIndex").Parse(`<!DOCTY
 type (
 	Handler struct {
 		service ServiceProvider
+		saver   Saver
 	}
 
 	ServiceProvider interface {
@@ -64,11 +66,16 @@ type (
 		Gauges() map[string]float64
 		Counters() map[string]int64
 	}
+
+	Saver interface {
+		Save(ctx context.Context) error
+	}
 )
 
-func NewHandler(service ServiceProvider) *Handler {
+func NewHandler(service ServiceProvider, saver Saver) *Handler {
 	return &Handler{
 		service: service,
+		saver:   saver,
 	}
 }
 
@@ -92,17 +99,17 @@ func (h *Handler) GetMetricValue() http.HandlerFunc {
 
 func (h *Handler) UpdateFromPath() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		updateMetricsFromPath(w, r, h.service)
+		updateMetricsFromPath(w, r, h.service, h.saver)
 	}
 }
 
 func (h *Handler) UpdateFromBody() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		updateMetricsFromBody(w, r, h.service)
+		updateMetricsFromBody(w, r, h.service, h.saver)
 	}
 }
 
-func updateMetricsFromPath(w http.ResponseWriter, r *http.Request, service ServiceProvider) {
+func updateMetricsFromPath(w http.ResponseWriter, r *http.Request, service ServiceProvider, saver Saver) {
 	mtype := models.MetricType(strings.ToLower(chi.URLParam(r, "mtype")))
 	metric := chi.URLParam(r, "metric")
 	valueStr := chi.URLParam(r, "value")
@@ -144,10 +151,17 @@ func updateMetricsFromPath(w http.ResponseWriter, r *http.Request, service Servi
 		return
 	}
 
+	if saver != nil {
+		if err := saver.Save(r.Context()); err != nil {
+			http.Error(w, "failed to persist metrics", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	w.WriteHeader(http.StatusOK)
 }
 
-func updateMetricsFromBody(w http.ResponseWriter, r *http.Request, service ServiceProvider) {
+func updateMetricsFromBody(w http.ResponseWriter, r *http.Request, service ServiceProvider, saver Saver) {
 	defer func() { _ = r.Body.Close() }()
 
 	var metrics models.Metrics
@@ -211,6 +225,13 @@ func updateMetricsFromBody(w http.ResponseWriter, r *http.Request, service Servi
 	default:
 		http.Error(w, fmt.Sprintf("invalid metric type: %q", mtype), http.StatusBadRequest)
 		return
+	}
+
+	if saver != nil {
+		if err := saver.Save(r.Context()); err != nil {
+			http.Error(w, "failed to persist metrics", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	respBody, err := json.Marshal(out)

@@ -39,21 +39,54 @@ func run() error {
 		return err
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	repos := repository.NewRepository()
 	svc := service.NewService(repos)
-	h := handler.NewHandler(svc)
+
+	fileStorage := repository.NewFileStorage(repos, flagFileStoragePath)
+	if flagRestore {
+		if err := fileStorage.Restore(ctx); err != nil {
+			return err
+		}
+	}
+
+	var saver handler.Saver
+	if flagStoreIntervalSec == 0 {
+		saver = fileStorage
+	}
+
+	h := handler.NewHandler(svc, saver)
 
 	logger.Log.Info("starting metrics server on", zap.String("address", flagRunAddr))
 	srv := &Server{}
 	mux := NewMux(h)
 
+	if flagStoreIntervalSec > 0 {
+		interval := time.Duration(flagStoreIntervalSec) * time.Second
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		go func() {
+			for {
+				select {
+				case <-ticker.C:
+					if err := fileStorage.Save(ctx); err != nil {
+						logger.Log.Warn("failed to persist metrics", zap.Error(err))
+					}
+				case <-ctx.Done():
+					_ = fileStorage.Save(context.Background())
+					return
+				}
+			}
+		}()
+	}
+
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- srv.Run(mux)
 	}()
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	select {
 	case err := <-errCh:

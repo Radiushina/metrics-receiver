@@ -88,7 +88,7 @@ func (m *mockService) Counters() map[string]int64 {
 }
 
 func newTestMux(svc handler.ServiceProvider) http.Handler {
-	h := handler.NewHandler(svc)
+	h := handler.NewHandler(svc, nil)
 	r := chi.NewRouter()
 	r.Get("/", h.GetMetrics())
 	r.Post("/update/{mtype}/{metric}/{value}", h.UpdateFromPath())
