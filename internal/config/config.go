@@ -9,13 +9,14 @@ type AgentConfig struct {
 	ReportIntervalSec *int64  `env:"REPORT_INTERVAL"`
 }
 
-// ServiceConfig holds optional environment overrides for the metrics server.
-// Pointer fields are nil when the corresponding variable is not set in the environment.
+// ServiceConfig содержит опциональные значения из переменных окружения для конфигурации сервера.
+// Поля-указатели равны nil, если соответствующая переменная окружения не задана.
 //
-// STORE_INTERVAL is interpreted as whole seconds. A value of 0 enables synchronous persistence
-// (save after each update); a positive value enables periodic persistence with the given interval.
-// FILE_STORAGE_PATH is the path to the file used for persistence.
-// RESTORE controls whether persisted metrics should be loaded from FILE_STORAGE_PATH on startup.
+// STORE_INTERVAL интерпретируется как целое число секунд. Значение 0 включает синхронное сохранение
+// (после каждого обновления метрики); положительное значение включает периодическое сохранение
+// с указанным интервалом.
+// FILE_STORAGE_PATH — путь до файла, используемого для сохранения метрик.
+// RESTORE определяет, нужно ли загружать сохранённые метрики из FILE_STORAGE_PATH при старте.
 type ServiceConfig struct {
 	RunAddr         *string `env:"ADDRESS"`
 	StoreInterval   *int    `env:"STORE_INTERVAL"`

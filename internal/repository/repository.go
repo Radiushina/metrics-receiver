@@ -27,6 +27,12 @@ func (r *Repository) AddCounter(name string, delta int64) {
 	r.counters[name] += delta
 }
 
+func (r *Repository) SetCounter(name string, value int64) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.counters[name] = value
+}
+
 func (r *Repository) GetGauge(name string) (float64, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

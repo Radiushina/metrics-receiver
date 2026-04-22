@@ -27,6 +27,17 @@ func TestMemStorage_AddCounter_Accumulates(t *testing.T) {
 	}
 }
 
+func TestMemStorage_SetCounter_Replaces(t *testing.T) {
+	s := repository.NewRepository()
+	s.AddCounter(models.PollCount, 1)
+	s.SetCounter(models.PollCount, 42)
+	s.AddCounter(models.PollCount, 5)
+
+	if got := s.Counters()[models.PollCount]; got != 47 {
+		t.Fatalf("expected counter 47, got %v", got)
+	}
+}
+
 func TestMemStorage_GaugeAndCounter_Independent(t *testing.T) {
 	s := repository.NewRepository()
 	s.SetGauge("x", 1.5)
