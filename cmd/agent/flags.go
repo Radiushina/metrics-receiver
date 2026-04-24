@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/Radiushina/metrics-receiver.git/internal/config"
-	"github.com/caarlos0/env/v6"
+	"github.com/caarlos0/env/v11"
 )
 
 var flagRunAddr string
