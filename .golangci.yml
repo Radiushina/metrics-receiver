@@ -1,0 +1,29 @@
+version: 2
+
+linters:
+  enable:
+    - revive     # Style mistakes
+    - staticcheck # Bug detection
+    - errcheck   # Unchecked errors
+  disable-all: false
+
+  settings:
+    revive:
+      enable-all-rules: true
+      rules:
+        - name: package-comments
+          disabled: true
+
+issues:
+  exclude-rules:
+    - linters:
+        - revive
+      text: "package-comments"
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+run:
+  timeout: 5m

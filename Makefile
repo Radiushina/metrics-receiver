@@ -1,6 +1,9 @@
 BINARY = metrics-server
 
-.PHONY: run run-server run-agent run-all build build-server build-agent test-iter1 test-iter2 test-iter3 test-iter7 test-iter8 test-iter9 unit
+.PHONY: run lint run-server run-agent run-all build build-server build-agent test-iter1 test-iter2 test-iter3 test-iter7 test-iter8 test-iter9 unit
+
+lint:
+	golangci-lint run --config .golangci.yml
 
 run: run-server
 
