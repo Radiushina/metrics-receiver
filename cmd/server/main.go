@@ -24,7 +24,7 @@ import (
 func main() {
 	if exitCode, err := parseFlags(); err != nil {
 		if !errors.Is(err, flag.ErrHelp) {
-			fmt.Fprintln(os.Stderr, err)
+			_, _ = fmt.Fprintln(os.Stderr, err)
 		}
 		os.Exit(exitCode)
 	}
@@ -39,7 +39,8 @@ func run() error {
 		return err
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(),
+		syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	repos := repository.NewRepository()
@@ -59,7 +60,8 @@ func run() error {
 
 	h := handler.NewHandler(svc, saver)
 
-	logger.Log.Info("starting metrics server on", zap.String("address", flagRunAddr))
+	logger.Log.Info("starting metrics server on",
+		zap.String("address", flagRunAddr))
 	srv := &Server{}
 	mux := NewMux(h)
 
@@ -73,7 +75,8 @@ func run() error {
 				select {
 				case <-ticker.C:
 					if err := fileStorage.Save(ctx); err != nil {
-						logger.Log.Warn("failed to persist metrics", zap.Error(err))
+						logger.Log.Warn("failed to persist metrics",
+							zap.Error(err))
 					}
 				case <-ctx.Done():
 					_ = fileStorage.Save(context.Background())
@@ -92,7 +95,7 @@ func run() error {
 	case err := <-errCh:
 		return err
 	case <-ctx.Done():
-		log.Printf("shutting down metrics server")
+		log.Print("shutting down metrics server")
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

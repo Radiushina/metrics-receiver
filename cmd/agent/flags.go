@@ -11,19 +11,29 @@ import (
 	"github.com/caarlos0/env/v11"
 )
 
-var flagRunAddr string
-var flagPollInterval int64
-var flagReportInterval int64
+type Flags struct {
+	runAddr        string
+	pollInterval   int64
+	reportInterval int64
+}
 
-func parseFlags() (exitCode int, err error) {
+func NewFlags() *Flags {
+	return &Flags{
+		runAddr:        "localhost:8080",
+		pollInterval:   2,
+		reportInterval: 10,
+	}
+}
+
+func (r *Flags) parse() (exitCode int, err error) {
 	var envCfg config.AgentConfig
 
 	fs := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 
-	fs.StringVar(&flagRunAddr, "a", "localhost:8080", "HTTP server host:port (scheme http:// added automatically)")
-	fs.Int64Var(&flagPollInterval, "p", 2, "poll interval: how often to read runtime.MemStats (seconds)")
-	fs.Int64Var(&flagReportInterval, "r", 10, "report interval: how often to send metrics to the server (seconds)")
+	fs.StringVar(&r.runAddr, "a", r.runAddr, "HTTP server host:port (scheme http:// added automatically)")
+	fs.Int64Var(&r.pollInterval, "p", r.pollInterval, "poll interval: how often to read runtime.MemStats (seconds)")
+	fs.Int64Var(&r.reportInterval, "r", r.reportInterval, "report interval: how often to send metrics to the server (seconds)")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -37,20 +47,20 @@ func parseFlags() (exitCode int, err error) {
 	}
 
 	if envCfg.RunAddr != nil {
-		flagRunAddr = strings.TrimSpace(*envCfg.RunAddr)
+		r.runAddr = strings.TrimSpace(*envCfg.RunAddr)
 	}
 	if envCfg.PollIntervalSec != nil {
-		flagPollInterval = *envCfg.PollIntervalSec
+		r.pollInterval = *envCfg.PollIntervalSec
 	}
 	if envCfg.ReportIntervalSec != nil {
-		flagReportInterval = *envCfg.ReportIntervalSec
+		r.reportInterval = *envCfg.ReportIntervalSec
 	}
 
 	return 0, nil
 }
 
-func serverBaseURL() string {
-	s := strings.TrimSpace(flagRunAddr)
+func (r *Flags) serverBaseURL() string {
+	s := strings.TrimSpace(r.runAddr)
 	if s == "" {
 		s = "localhost:8080"
 	}
@@ -60,10 +70,10 @@ func serverBaseURL() string {
 	return "http://" + s
 }
 
-func getPollInterval() time.Duration {
-	return time.Duration(flagPollInterval) * time.Second
+func (r *Flags) pollEvery() time.Duration {
+	return time.Duration(r.pollInterval) * time.Second
 }
 
-func getReportInterval() time.Duration {
-	return time.Duration(flagReportInterval) * time.Second
+func (r *Flags) reportEvery() time.Duration {
+	return time.Duration(r.reportInterval) * time.Second
 }

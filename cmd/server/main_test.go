@@ -3,6 +3,7 @@ package main_test
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -11,16 +12,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Radiushina/metrics-receiver.git/cmd/server"
+	main "github.com/Radiushina/metrics-receiver.git/cmd/server"
 	"github.com/Radiushina/metrics-receiver.git/internal/handler"
 	models "github.com/Radiushina/metrics-receiver.git/internal/model"
 	"github.com/Radiushina/metrics-receiver.git/internal/repository"
 	"github.com/Radiushina/metrics-receiver.git/internal/service"
-	"golang.org/x/net/context"
 )
 
 func TestNewMux_PostGauge_OK(t *testing.T) {
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -42,7 +41,7 @@ func TestNewMux_PostGauge_OK(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	t.Cleanup(func() { _ = resp.Body.Close() })
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", resp.StatusCode)
@@ -71,7 +70,7 @@ func TestNewMux_PostCounter_OK(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	t.Cleanup(func() { _ = resp.Body.Close() })
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", resp.StatusCode)
@@ -100,7 +99,7 @@ func TestNewMux_InvalidType_BadRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	t.Cleanup(func() { _ = resp.Body.Close() })
 
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", resp.StatusCode)
@@ -128,7 +127,7 @@ func TestNewMux_JSONEndpoints_TrailingSlash_OK(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	updResp.Body.Close()
+	_ = updResp.Body.Close()
 	if updResp.StatusCode != http.StatusOK {
 		t.Fatalf("POST /update/: status %d", updResp.StatusCode)
 	}
@@ -144,7 +143,7 @@ func TestNewMux_JSONEndpoints_TrailingSlash_OK(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer valResp.Body.Close()
+	t.Cleanup(func() { _ = valResp.Body.Close() })
 	if valResp.StatusCode != http.StatusOK {
 		t.Fatalf("POST /value/: status %d", valResp.StatusCode)
 	}
@@ -184,7 +183,7 @@ func TestNewMux_GzipRequestBody_OK(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	t.Cleanup(func() { _ = resp.Body.Close() })
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
@@ -226,7 +225,7 @@ func TestNewMux_GzipResponse_JSON_WhenAccepted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	t.Cleanup(func() { _ = resp.Body.Close() })
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", resp.StatusCode)
@@ -239,7 +238,8 @@ func TestNewMux_GzipResponse_JSON_WhenAccepted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer zr.Close()
+	t.Cleanup(func() { _ = zr.Close() })
+
 	b, err := io.ReadAll(zr)
 	if err != nil {
 		t.Fatal(err)
@@ -273,7 +273,7 @@ func TestNewMux_GzipResponse_HTML_WhenAccepted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	t.Cleanup(func() { _ = resp.Body.Close() })
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", resp.StatusCode)
@@ -286,7 +286,7 @@ func TestNewMux_GzipResponse_HTML_WhenAccepted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer zr.Close()
+	t.Cleanup(func() { _ = zr.Close() })
 	b, err := io.ReadAll(zr)
 	if err != nil {
 		t.Fatal(err)
@@ -317,7 +317,7 @@ func TestNewMux_DoesNotGzipTextPlain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	t.Cleanup(func() { _ = resp.Body.Close() })
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", resp.StatusCode)

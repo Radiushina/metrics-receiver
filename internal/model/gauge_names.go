@@ -5,6 +5,7 @@ import (
 	"runtime"
 )
 
+// GaugeNames is the set of gauge metric names exported from runtime.MemStats.
 var GaugeNames = []string{
 	"Alloc",
 	"BuckHashSys",
@@ -35,6 +36,7 @@ var GaugeNames = []string{
 	"TotalAlloc",
 }
 
+// UpdateGaugesFromMemStats updates gaugeValues from the provided MemStats and sets RandomValue.
 func UpdateGaugesFromMemStats(gaugeValues map[string]float64, ms *runtime.MemStats, rnd *rand.Rand) {
 	gaugeValues["Alloc"] = float64(ms.Alloc)
 	gaugeValues["BuckHashSys"] = float64(ms.BuckHashSys)

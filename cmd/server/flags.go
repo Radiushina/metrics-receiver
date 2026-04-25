@@ -11,6 +11,13 @@ import (
 	"github.com/caarlos0/env/v11"
 )
 
+const (
+	defaultRunAddr          = ":8080"
+	defaultLogLevel         = "info"
+	defaultStoreIntervalSec = 300
+	defaultFileStoragePath  = "./metrics-db.json"
+)
+
 var (
 	flagRunAddr          string
 	flagLogLevel         string
@@ -20,28 +27,48 @@ var (
 )
 
 func parseFlags() (exitCode int, err error) {
-	var envCfg config.ServiceConfig
-
 	fs := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 
-	fs.StringVar(&flagRunAddr, "a", ":8080", "address and port to run server")
-	fs.StringVar(&flagLogLevel, "l", "info", "log level")
-	fs.IntVar(&flagStoreIntervalSec, "i", 300, "store interval in seconds (0 means synchronous)")
-	fs.StringVar(&flagFileStoragePath, "f", "./metrics-db.json", "file path to persist metrics")
-	fs.BoolVar(&flagRestore, "r", false, "restore persisted metrics on startup")
-
-	if err := fs.Parse(os.Args[1:]); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return 0, flag.ErrHelp
-		}
-		return 1, fmt.Errorf("ошибка флагов: %v\n", err)
+	registerFlags(fs)
+	if exitCode, err := parseCLI(fs); err != nil {
+		return exitCode, err
 	}
 
+	var envCfg config.ServiceConfig
 	if err := env.Parse(&envCfg); err != nil {
 		return 1, err
 	}
 
+	applyEnvConfig(envCfg)
+	applyEnvLogLevel()
+	normalize()
+	if err := validate(); err != nil {
+		return 1, err
+	}
+
+	return 0, nil
+}
+
+func registerFlags(fs *flag.FlagSet) {
+	fs.StringVar(&flagRunAddr, "a", defaultRunAddr, "address and port to run server")
+	fs.StringVar(&flagLogLevel, "l", defaultLogLevel, "log level")
+	fs.IntVar(&flagStoreIntervalSec, "i", defaultStoreIntervalSec, "store interval in seconds (0 means synchronous)")
+	fs.StringVar(&flagFileStoragePath, "f", defaultFileStoragePath, "file path to persist metrics")
+	fs.BoolVar(&flagRestore, "r", false, "restore persisted metrics on startup")
+}
+
+func parseCLI(fs *flag.FlagSet) (exitCode int, err error) {
+	if err := fs.Parse(os.Args[1:]); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0, flag.ErrHelp
+		}
+		return 1, fmt.Errorf("ошибка флагов: %w", err)
+	}
+	return 0, nil
+}
+
+func applyEnvConfig(envCfg config.ServiceConfig) {
 	if envCfg.RunAddr != nil {
 		flagRunAddr = strings.TrimSpace(*envCfg.RunAddr)
 	}
@@ -54,19 +81,25 @@ func parseFlags() (exitCode int, err error) {
 	if envCfg.Restore != nil {
 		flagRestore = *envCfg.Restore
 	}
+}
 
+func applyEnvLogLevel() {
 	if envLogLevel := os.Getenv("LOG_LEVEL"); envLogLevel != "" {
 		flagLogLevel = envLogLevel
 	}
+}
 
+func normalize() {
 	flagRunAddr = strings.TrimSpace(flagRunAddr)
 	flagFileStoragePath = strings.TrimSpace(flagFileStoragePath)
+}
+
+func validate() error {
 	if flagStoreIntervalSec < 0 {
-		return 1, fmt.Errorf("STORE_INTERVAL must be non-negative, got %d", flagStoreIntervalSec)
+		return fmt.Errorf("STORE_INTERVAL is negative %d", flagStoreIntervalSec)
 	}
 	if flagFileStoragePath == "" {
-		return 1, fmt.Errorf("FILE_STORAGE_PATH must be non-empty")
+		return errors.New("FILE_STORAGE_PATH is empty")
 	}
-
-	return 0, nil
+	return nil
 }

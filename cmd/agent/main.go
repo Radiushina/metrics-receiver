@@ -18,19 +18,19 @@ import (
 )
 
 func main() {
-	exitCode, err := parseFlags()
+	flags := NewFlags()
+
+	exitCode, err := flags.parse()
 	if err != nil {
 		if !errors.Is(err, flag.ErrHelp) {
-			fmt.Fprintln(os.Stderr, err)
+			_, _ = fmt.Fprintln(os.Stderr, err)
 		}
 		os.Exit(exitCode)
 	}
 
-	baseURL := serverBaseURL()
-	pollInterval := getPollInterval()
-	reportInterval := getReportInterval()
-
-	log.Printf("agent: server %s, poll %v, report %v", baseURL, pollInterval, reportInterval)
+	baseURL := flags.serverBaseURL()
+	pollInterval := flags.pollEvery()
+	reportInterval := flags.reportEvery()
 
 	client := resty.New().
 		SetTimeout(5 * time.Second)
@@ -47,7 +47,7 @@ func main() {
 		models.UpdateGaugesFromMemStats(gaugeValues, &ms, rnd)
 		mu.Unlock()
 		atomic.AddInt64(&pollCountDelta, 1)
-		log.Printf("poll: MemStats + RandomValue updated")
+		log.Print("poll: MemStats + RandomValue updated")
 	}
 
 	poll()

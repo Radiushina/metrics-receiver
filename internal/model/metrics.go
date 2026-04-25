@@ -1,18 +1,18 @@
 package models
 
+// MetricType is a metric kind supported by the service.
 type MetricType string
 
+// Supported metric kinds and well-known metric names.
 const (
 	Counter   MetricType = "counter"
 	Gauge     MetricType = "gauge"
 	PollCount            = "PollCount"
 )
 
-// NOTE: Не усложняем пример, вводя иерархическую вложенность структур.
-// Органичиваясь плоской моделью.
-// Delta и Value объявлены через указатели,
-// что бы отличать значение "0", от не заданного значения
-// и соответственно не кодировать в структуру.
+// Metrics represents a single metric in the JSON API.
+//
+// Delta and Value are pointers to distinguish an explicit 0 from an absent field.
 type Metrics struct {
 	ID    string     `json:"id"`
 	MType MetricType `json:"type"`

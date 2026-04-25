@@ -7,12 +7,13 @@ import (
 	"strings"
 )
 
-// DecompressRequest transparently gunzips request body when Content-Encoding: gzip is present.
+// DecompressRequest transparently gunzips request body when Content-Encoding:
+// gzip is present.
 // If Content-Encoding is present and not supported, it returns 415.
 func DecompressRequest(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		enc := strings.TrimSpace(strings.ToLower(r.Header.Get("Content-Encoding")))
-		if enc == "" || enc == "identity" {
+		enc, ok := normalizedContentEncoding(r)
+		if !ok {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -44,7 +45,14 @@ func DecompressRequest(next http.Handler) http.Handler {
 	})
 }
 
-// CompressResponse gzips responses when the client supports gzip (Accept-Encoding)
+func normalizedContentEncoding(r *http.Request) (enc string, ok bool) {
+	rawEnc := r.Header.Get("Content-Encoding")
+	enc = strings.TrimSpace(strings.ToLower(rawEnc))
+	return enc, enc != "" && enc != "identity"
+}
+
+// CompressResponse gzips responses when the client supports
+// gzip (Accept-Encoding)
 // and the response Content-Type is application/json or text/html.
 func CompressResponse(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -57,7 +65,7 @@ func CompressResponse(next http.Handler) http.Handler {
 			ResponseWriter: w,
 			request:        r,
 		}
-		defer gw.Close()
+		defer func() { _ = gw.Close() }()
 
 		next.ServeHTTP(gw, r)
 	})
@@ -112,7 +120,8 @@ func (w *gzipResponseWriter) Write(p []byte) (int, error) {
 
 func (w *gzipResponseWriter) Close() error {
 	if !w.headerSent && w.wroteHeader {
-		// Handler called WriteHeader but wrote no body. Still must send headers.
+		// Handler called WriteHeader but wrote no body.
+		// Still must send headers.
 		if w.gz == nil && w.shouldCompressNow() {
 			w.enableCompression()
 		}
@@ -150,11 +159,7 @@ func (w *gzipResponseWriter) shouldCompressNow() bool {
 	}
 
 	ct := h.Get("Content-Type")
-	if !isCompressibleContentType(ct) {
-		return false
-	}
-
-	return true
+	return isCompressibleContentType(ct)
 }
 
 func (w *gzipResponseWriter) enableCompression() {
@@ -175,7 +180,6 @@ func clientAcceptsGzip(r *http.Request) bool {
 }
 
 func headerContainsGzip(ae string) bool {
-	// Minimal parser: supports values like "gzip", "gzip, deflate" and "gzip;q=0".
 	parts := strings.Split(ae, ",")
 	for _, p := range parts {
 		token := strings.TrimSpace(strings.ToLower(p))

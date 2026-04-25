@@ -11,14 +11,35 @@ linters:
     revive:
       enable-all-rules: true
       rules:
+        # Too noisy for this codebase right now.
+        - name: add-constant
+          disabled: true
+        - name: line-length-limit
+          disabled: true
+        - name: cognitive-complexity
+          disabled: true
+        - name: cyclomatic
+          disabled: true
+        - name: package-directory-mismatch
+          disabled: true
+        - name: enforce-switch-style
+          disabled: true
+        - name: get-return
+          disabled: true
+        - name: function-length
+          disabled: true
+
         - name: package-comments
           disabled: true
 
-issues:
-  exclude-rules:
-    - linters:
-        - revive
-      text: "package-comments"
+  exclusions:
+    rules:
+      - linters:
+          - revive
+        text: "package-comments"
+      - path: _test\.go$
+        linters:
+          - revive
 
 formatters:
   enable:

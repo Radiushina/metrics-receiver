@@ -14,14 +14,17 @@ import (
 
 // FileStorage сохраняет текущий снимок метрик из памяти в JSON-файл.
 //
-// Запись выполняется через временный файл с последующим атомарным rename. Это защищает от ситуации,
-// когда процесс падает/перезапускается во время сохранения: после старта RESTORE увидит либо
+// Запись выполняется через временный файл с последующим атомарным rename.
+// Это защищает от ситуации,
+// когда процесс падает/перезапускается во время сохранения:
+// после старта RESTORE увидит либо
 // предыдущий корректный снимок, либо новый, но не частично записанный JSON.
 type FileStorage struct {
 	repo *Repository
 	path string
 }
 
+// NewFileStorage creates a file-backed snapshot storage for the given repository.
 func NewFileStorage(repo *Repository, path string) *FileStorage {
 	return &FileStorage{
 		repo: repo,
@@ -29,9 +32,10 @@ func NewFileStorage(repo *Repository, path string) *FileStorage {
 	}
 }
 
+// Save persists the current metrics snapshot to disk.
 func (s *FileStorage) Save(_ context.Context) error {
 	if s.path == "" {
-		return fmt.Errorf("file storage path is empty")
+		return errors.New("file storage path is empty")
 	}
 
 	dir := filepath.Dir(s.path)
@@ -75,52 +79,79 @@ func (s *FileStorage) Save(_ context.Context) error {
 	return nil
 }
 
+// Restore loads metrics from disk into the repository if the file exists.
 func (s *FileStorage) Restore(_ context.Context) error {
 	if s.path == "" {
-		return fmt.Errorf("file storage path is empty")
+		return errors.New("file storage path is empty")
 	}
 
-	f, err := os.Open(s.path)
+	f, ok, err := openStorageFile(s.path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		return fmt.Errorf("open storage file: %w", err)
+		return err
 	}
-	defer f.Close()
+	if !ok {
+		return nil
+	}
+	defer func() { _ = f.Close() }()
 
-	b, err := io.ReadAll(f)
+	b, empty, err := readAllOrEmpty(f)
 	if err != nil {
-		return fmt.Errorf("read storage file: %w", err)
+		return err
 	}
-	if len(b) == 0 {
+	if empty {
 		return nil
 	}
 
+	metrics, err := decodeMetrics(b)
+	if err != nil {
+		return err
+	}
+	applyMetricsSnapshot(s.repo, metrics)
+	return nil
+}
+
+func openStorageFile(path string) (f *os.File, ok bool, err error) {
+	f, err = os.Open(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("open storage file: %w", err)
+	}
+	return f, true, nil
+}
+
+func readAllOrEmpty(r io.Reader) (b []byte, empty bool, err error) {
+	b, err = io.ReadAll(r)
+	if err != nil {
+		return nil, false, fmt.Errorf("read storage file: %w", err)
+	}
+	return b, len(b) == 0, nil
+}
+
+func decodeMetrics(b []byte) ([]models.Metrics, error) {
 	var metrics []models.Metrics
 	if err := json.Unmarshal(b, &metrics); err != nil {
-		return fmt.Errorf("decode metrics: %w", err)
+		return nil, fmt.Errorf("decode metrics: %w", err)
 	}
+	return metrics, nil
+}
 
+func applyMetricsSnapshot(repo *Repository, metrics []models.Metrics) {
 	for _, m := range metrics {
 		switch m.MType {
 		case models.Gauge:
 			if m.Value == nil {
 				continue
 			}
-			s.repo.SetGauge(m.ID, *m.Value)
+			repo.SetGauge(m.ID, *m.Value)
 		case models.Counter:
 			if m.Delta == nil {
 				continue
 			}
-			// For persistence/restoration, Delta stores the current absolute counter value.
-			s.repo.SetCounter(m.ID, *m.Delta)
-		default:
-			continue
+			repo.SetCounter(m.ID, *m.Delta)
 		}
 	}
-
-	return nil
 }
 
 func (s *FileStorage) snapshot() []models.Metrics {
