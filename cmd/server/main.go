@@ -95,7 +95,7 @@ func run() error {
 	case err := <-errCh:
 		return err
 	case <-ctx.Done():
-		log.Print("shutting down metrics server")
+		logger.Log.Info("shutting down metrics server")
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
