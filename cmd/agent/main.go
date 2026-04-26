@@ -60,12 +60,6 @@ func main() {
 	defer reportTicker.Stop()
 
 	go func() {
-		for range pollTicker.C {
-			pollOnce(logg, &ms, &mu, gaugeValues, rnd, &pollCountDelta)
-		}
-	}()
-
-	go func() {
 		snapshot, delta := takeReportSnapshot(&mu, gaugeValues, &pollCountDelta)
 		if err := reportOnce(logg, client, baseURL, snapshot, delta); err != nil {
 			atomic.AddInt64(&pollCountDelta, delta)
@@ -78,5 +72,7 @@ func main() {
 		}
 	}()
 
-	select {}
+	for range pollTicker.C {
+		pollOnce(logg, &ms, &mu, gaugeValues, rnd, &pollCountDelta)
+	}
 }
