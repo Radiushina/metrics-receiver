@@ -14,6 +14,7 @@ import (
 	"github.com/Radiushina/metrics-receiver.git/internal/handler"
 	models "github.com/Radiushina/metrics-receiver.git/internal/model"
 	"github.com/go-chi/chi/v5"
+	"go.uber.org/zap"
 )
 
 type mockService struct {
@@ -88,7 +89,7 @@ func (m *mockService) Counters() map[string]int64 {
 }
 
 func newTestMux(svc handler.ServiceProvider) http.Handler {
-	h := handler.NewHandler(svc, nil)
+	h := handler.NewHandler(svc, nil, zap.NewNop())
 	r := chi.NewRouter()
 	r.Get("/", h.GetMetrics())
 	r.Post("/update/{mtype}/{metric}/{value}", h.UpdateFromPath())

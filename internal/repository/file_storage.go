@@ -52,29 +52,35 @@ func (s *FileStorage) Save(_ context.Context) error {
 	if err != nil {
 		return fmt.Errorf("create temp file: %w", err)
 	}
+	// committed indicates that tmpPath has been atomically moved to the final path via Rename.
+	// Until then we must clean up (close + remove) the temp file on any error; after Rename,
+	// removing tmpPath would delete the final file.
+	committed := false
+	defer func() {
+		if committed {
+			return
+		}
+		_ = f.Close()
+		_ = os.Remove(tmpPath)
+	}()
 
 	enc := json.NewEncoder(f)
 	// Encode — это и есть маршалинг в JSON, только потоковый: без промежуточного []byte пишем сразу в файл.
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(metrics); err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmpPath)
 		return fmt.Errorf("encode metrics: %w", err)
 	}
 	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmpPath)
 		return fmt.Errorf("sync temp file: %w", err)
 	}
 	if err := f.Close(); err != nil {
-		_ = os.Remove(tmpPath)
 		return fmt.Errorf("close temp file: %w", err)
 	}
 
 	if err := os.Rename(tmpPath, s.path); err != nil {
-		_ = os.Remove(tmpPath)
 		return fmt.Errorf("rename temp file: %w", err)
 	}
+	committed = true
 
 	return nil
 }

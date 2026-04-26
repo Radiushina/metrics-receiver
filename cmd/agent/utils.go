@@ -7,18 +7,19 @@ import (
 	"sync/atomic"
 
 	"github.com/Radiushina/metrics-receiver.git/internal/agent"
-	"github.com/Radiushina/metrics-receiver.git/internal/logger"
 	models "github.com/Radiushina/metrics-receiver.git/internal/model"
 	"github.com/go-resty/resty/v2"
+	"go.uber.org/zap"
 )
 
 func reportOnce(
+	logg *zap.Logger,
 	client *resty.Client,
 	baseURL string,
 	snapshot map[string]float64,
 	delta int64,
 ) error {
-	logger.Log.Sugar().Infof(
+	logg.Sugar().Infof(
 		"report: sending %d gauges + RandomValue + PollCount(+%d)…",
 		len(models.GaugeNames),
 		delta,
@@ -32,7 +33,7 @@ func reportOnce(
 			models.Gauge,
 			snapshot[name],
 		); err != nil {
-			logger.Log.Sugar().Warnf(
+			logg.Sugar().Warnf(
 				"failed to send gauge %s=%v: %v",
 				name,
 				snapshot[name],
@@ -48,7 +49,7 @@ func reportOnce(
 		models.Gauge,
 		snapshot["RandomValue"],
 	); err != nil {
-		logger.Log.Sugar().Warnf(
+		logg.Sugar().Warnf(
 			"failed to send gauge RandomValue=%v: %v",
 			snapshot["RandomValue"],
 			err,
@@ -62,7 +63,7 @@ func reportOnce(
 		models.Counter,
 		delta,
 	); err != nil {
-		logger.Log.Sugar().Warnf("failed to send counter PollCount+=%d: %v", delta, err)
+		logg.Sugar().Warnf("failed to send counter PollCount+=%d: %v", delta, err)
 		return err
 	}
 	return nil
@@ -86,6 +87,7 @@ func takeReportSnapshot(
 }
 
 func pollOnce(
+	logg *zap.Logger,
 	ms *runtime.MemStats,
 	mu *sync.Mutex,
 	gaugeValues map[string]float64,
@@ -99,5 +101,5 @@ func pollOnce(
 	mu.Unlock()
 
 	atomic.AddInt64(pollCountDelta, 1)
-	logger.Log.Info("poll: MemStats + RandomValue updated")
+	logg.Info("poll: MemStats + RandomValue updated")
 }

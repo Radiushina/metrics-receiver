@@ -35,9 +35,12 @@ func main() {
 }
 
 func run() error {
-	if err := logger.Initialize(flagLogLevel); err != nil {
+	logg, err := logger.New(flagLogLevel)
+	if err != nil {
 		return err
 	}
+	logg = logger.OrNop(logg)
+	defer func() { _ = logg.Sync() }()
 
 	ctx, stop := signal.NotifyContext(context.Background(),
 		syscall.SIGINT, syscall.SIGTERM)
@@ -58,12 +61,12 @@ func run() error {
 		saver = fileStorage
 	}
 
-	h := handler.NewHandler(svc, saver)
+	h := handler.NewHandler(svc, saver, logg)
 
-	logger.Log.Info("starting metrics server on",
+	logg.Info("starting metrics server on",
 		zap.String("address", flagRunAddr))
 	srv := &Server{}
-	mux := NewMux(h)
+	mux := NewMux(logg, h)
 
 	if flagStoreIntervalSec > 0 {
 		interval := time.Duration(flagStoreIntervalSec) * time.Second
@@ -75,7 +78,7 @@ func run() error {
 				select {
 				case <-ticker.C:
 					if err := fileStorage.Save(ctx); err != nil {
-						logger.Log.Warn("failed to persist metrics",
+						logg.Warn("failed to persist metrics",
 							zap.Error(err))
 					}
 				case <-ctx.Done():
@@ -95,7 +98,7 @@ func run() error {
 	case err := <-errCh:
 		return err
 	case <-ctx.Done():
-		logger.Log.Info("shutting down metrics server")
+		logg.Info("shutting down metrics server")
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -113,10 +116,12 @@ func run() error {
 	return runErr
 }
 
-func NewMux(h *handler.Handler) http.Handler {
+func NewMux(logg *zap.Logger, h *handler.Handler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.DecompressRequest)
-	r.Use(logger.LoggingMiddleware)
+	r.Use(func(next http.Handler) http.Handler {
+		return logger.LoggingMiddleware(logg, next)
+	})
 	r.Use(middleware.CompressResponse)
 	r.Get("/", h.GetMetrics())
 	r.Post("/update/{mtype}/{metric}/{value}", h.UpdateFromPath())

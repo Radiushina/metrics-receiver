@@ -14,6 +14,7 @@ import (
 	"github.com/Radiushina/metrics-receiver.git/internal/logger"
 	models "github.com/Radiushina/metrics-receiver.git/internal/model"
 	"github.com/go-resty/resty/v2"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -31,6 +32,12 @@ func main() {
 	pollInterval := flags.pollEvery()
 	reportInterval := flags.reportEvery()
 
+	logg, err := logger.New("info")
+	if err != nil {
+		logg = zap.NewNop()
+	}
+	defer func() { _ = logg.Sync() }()
+
 	client := resty.New().
 		SetTimeout(5 * time.Second)
 
@@ -40,8 +47,8 @@ func main() {
 	var pollCountDelta int64
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 
-	pollOnce(&ms, &mu, gaugeValues, rnd, &pollCountDelta)
-	logger.Log.Sugar().Infof(
+	pollOnce(logg, &ms, &mu, gaugeValues, rnd, &pollCountDelta)
+	logg.Sugar().Infof(
 		"poll: initial update done; first metric report in %v",
 		reportInterval,
 	)
@@ -54,18 +61,18 @@ func main() {
 
 	go func() {
 		for range pollTicker.C {
-			pollOnce(&ms, &mu, gaugeValues, rnd, &pollCountDelta)
+			pollOnce(logg, &ms, &mu, gaugeValues, rnd, &pollCountDelta)
 		}
 	}()
 
 	go func() {
 		snapshot, delta := takeReportSnapshot(&mu, gaugeValues, &pollCountDelta)
-		if err := reportOnce(client, baseURL, snapshot, delta); err != nil {
+		if err := reportOnce(logg, client, baseURL, snapshot, delta); err != nil {
 			atomic.AddInt64(&pollCountDelta, delta)
 		}
 		for range reportTicker.C {
 			snapshot, delta := takeReportSnapshot(&mu, gaugeValues, &pollCountDelta)
-			if err := reportOnce(client, baseURL, snapshot, delta); err != nil {
+			if err := reportOnce(logg, client, baseURL, snapshot, delta); err != nil {
 				atomic.AddInt64(&pollCountDelta, delta)
 			}
 		}

@@ -60,6 +60,7 @@ type (
 	Handler struct {
 		service ServiceProvider
 		saver   Saver
+		log     *zap.Logger
 	}
 
 	// ServiceProvider describes the service operations required by Handler.
@@ -78,11 +79,13 @@ type (
 	}
 )
 
-// NewHandler constructs a Handler with the given service and optional saver.
-func NewHandler(service ServiceProvider, saver Saver) *Handler {
+// NewHandler constructs a Handler with the given service, optional saver and logger.
+func NewHandler(service ServiceProvider, saver Saver, log *zap.Logger) *Handler {
+	log = logger.OrNop(log)
 	return &Handler{
 		service: service,
 		saver:   saver,
+		log:     log,
 	}
 }
 
@@ -90,7 +93,7 @@ func NewHandler(service ServiceProvider, saver Saver) *Handler {
 // that writes all collected metrics to the response.
 func (h *Handler) GetMetrics() http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
-		writeMetricsIndex(w, h.service)
+		writeMetricsIndex(w, h.service, h.log)
 	}
 }
 
@@ -98,7 +101,7 @@ func (h *Handler) GetMetrics() http.HandlerFunc {
 // that writes a single metric value in plain text format.
 func (h *Handler) GetMetric() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		getMetricValue(w, r, h.service)
+		getMetricValue(w, r, h.service, h.log)
 	}
 }
 
@@ -106,7 +109,7 @@ func (h *Handler) GetMetric() http.HandlerFunc {
 // that writes a single metric value in JSON format.
 func (h *Handler) GetMetricValue() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		getMetric(w, r, h.service)
+		getMetric(w, r, h.service, h.log)
 	}
 }
 
@@ -114,7 +117,7 @@ func (h *Handler) GetMetricValue() http.HandlerFunc {
 // that updates a metric from URL path parameters.
 func (h *Handler) UpdateFromPath() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		updateMetricsFromPath(w, r, h.service, h.saver)
+		updateMetricsFromPath(w, r, h.service, h.saver, h.log)
 	}
 }
 
@@ -122,11 +125,17 @@ func (h *Handler) UpdateFromPath() http.HandlerFunc {
 // that updates a metric from a JSON request body.
 func (h *Handler) UpdateFromBody() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		updateMetricsFromBody(w, r, h.service, h.saver)
+		updateMetricsFromBody(w, r, h.service, h.saver, h.log)
 	}
 }
 
-func updateMetricsFromPath(w http.ResponseWriter, r *http.Request, service ServiceProvider, saver Saver) {
+func updateMetricsFromPath(
+	w http.ResponseWriter,
+	r *http.Request,
+	service ServiceProvider,
+	saver Saver,
+	log *zap.Logger,
+) {
 	mtype := models.MetricType(strings.ToLower(chi.URLParam(r, "mtype")))
 	metric := chi.URLParam(r, "metric")
 	valueStr := chi.URLParam(r, "value")
@@ -154,7 +163,7 @@ func updateMetricsFromPath(w http.ResponseWriter, r *http.Request, service Servi
 			return
 		}
 		service.SetGauge(metric, v)
-		logger.Log.Sugar().Infof("server: gauge %s = %g", metric, v)
+		log.Sugar().Infof("server: gauge %s = %g", metric, v)
 	case models.Counter:
 		v, err := strconv.ParseInt(valueStr, 10, 64)
 		if err != nil {
@@ -162,7 +171,7 @@ func updateMetricsFromPath(w http.ResponseWriter, r *http.Request, service Servi
 			return
 		}
 		service.AddCounter(metric, v)
-		logger.Log.Sugar().Infof("server: counter %s += %d", metric, v)
+		log.Sugar().Infof("server: counter %s += %d", metric, v)
 	default:
 		http.Error(w, fmt.Sprintf("invalid metric type: %q", mtype), http.StatusBadRequest)
 		return
@@ -183,6 +192,7 @@ func updateMetricsFromBody(
 	r *http.Request,
 	service ServiceProvider,
 	saver Saver,
+	log *zap.Logger,
 ) {
 	defer func() { _ = r.Body.Close() }()
 
@@ -191,7 +201,7 @@ func updateMetricsFromBody(
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	logRequestBody("metrics update request body", reqBody)
+	logRequestBody(log, "metrics update request body", reqBody)
 
 	in, err := unmarshalMetric(reqBody)
 	if err != nil {
@@ -199,7 +209,7 @@ func updateMetricsFromBody(
 		return
 	}
 
-	out, status, err := applyMetricUpdate(service, in)
+	out, status, err := applyMetricUpdate(log, service, in)
 	if err != nil {
 		http.Error(w, err.Error(), status)
 		return
@@ -221,8 +231,8 @@ func readRequestBody(r *http.Request) ([]byte, error) {
 	return b, nil
 }
 
-func logRequestBody(msg string, b []byte) {
-	logger.Log.Info(msg, zap.String("body", string(b)))
+func logRequestBody(log *zap.Logger, msg string, b []byte) {
+	log.Info(msg, zap.String("body", string(b)))
 }
 
 func unmarshalMetric(b []byte) (models.Metrics, error) {
@@ -240,24 +250,32 @@ func unmarshalMetric(b []byte) (models.Metrics, error) {
 	return m, nil
 }
 
-func applyMetricUpdate(service ServiceProvider, in models.Metrics) (models.Metrics, int, error) {
+func applyMetricUpdate(
+	log *zap.Logger,
+	service ServiceProvider,
+	in models.Metrics,
+) (models.Metrics, int, error) {
 	switch in.MType {
 	case models.Counter:
-		return applyCounterUpdate(service, in)
+		return applyCounterUpdate(log, service, in)
 	case models.Gauge:
-		return applyGaugeUpdate(service, in)
+		return applyGaugeUpdate(log, service, in)
 	default:
 		return models.Metrics{}, http.StatusBadRequest, fmt.Errorf("invalid metric type: %q", in.MType)
 	}
 }
 
-func applyCounterUpdate(service ServiceProvider, in models.Metrics) (models.Metrics, int, error) {
+func applyCounterUpdate(
+	log *zap.Logger,
+	service ServiceProvider,
+	in models.Metrics,
+) (models.Metrics, int, error) {
 	if in.Delta == nil {
 		return models.Metrics{}, http.StatusBadRequest, errors.New("missing counter delta")
 	}
 
 	service.AddCounter(in.ID, *in.Delta)
-	logger.Log.Sugar().Infof("server: counter %s += %d", in.ID, *in.Delta)
+	log.Sugar().Infof("server: counter %s += %d", in.ID, *in.Delta)
 
 	total, ok := service.GetCounter(in.ID)
 	if !ok {
@@ -271,13 +289,17 @@ func applyCounterUpdate(service ServiceProvider, in models.Metrics) (models.Metr
 	}, http.StatusOK, nil
 }
 
-func applyGaugeUpdate(service ServiceProvider, in models.Metrics) (models.Metrics, int, error) {
+func applyGaugeUpdate(
+	log *zap.Logger,
+	service ServiceProvider,
+	in models.Metrics,
+) (models.Metrics, int, error) {
 	if in.Value == nil {
 		return models.Metrics{}, http.StatusBadRequest, errors.New("missing gauge value")
 	}
 
 	service.SetGauge(in.ID, *in.Value)
-	logger.Log.Sugar().Infof("server: gauge %s = %g", in.ID, *in.Value)
+	log.Sugar().Infof("server: gauge %s = %g", in.ID, *in.Value)
 
 	v := *in.Value
 	return models.Metrics{
@@ -305,7 +327,7 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_, _ = w.Write(respBody)
 }
 
-func getMetric(w http.ResponseWriter, r *http.Request, service ServiceProvider) {
+func getMetric(w http.ResponseWriter, r *http.Request, service ServiceProvider, log *zap.Logger) {
 	defer func() { _ = r.Body.Close() }()
 
 	var req models.Metrics
@@ -315,8 +337,7 @@ func getMetric(w http.ResponseWriter, r *http.Request, service ServiceProvider) 
 		return
 	}
 
-	logger.Log.Info("metric value request body",
-		zap.String("body", buf.String()))
+	log.Info("metric value request body", zap.String("body", buf.String()))
 
 	if err := json.Unmarshal(buf.Bytes(), &req); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
@@ -369,7 +390,7 @@ func getMetric(w http.ResponseWriter, r *http.Request, service ServiceProvider) 
 	_, _ = w.Write(respBody)
 }
 
-func getMetricValue(w http.ResponseWriter, r *http.Request, service ServiceProvider) {
+func getMetricValue(w http.ResponseWriter, r *http.Request, service ServiceProvider, _ *zap.Logger) {
 	mtype := models.MetricType(strings.ToLower(chi.URLParam(r, "mtype")))
 	metric := chi.URLParam(r, "metric")
 
@@ -407,7 +428,7 @@ func getMetricValue(w http.ResponseWriter, r *http.Request, service ServiceProvi
 	}
 }
 
-func writeMetricsIndex(w http.ResponseWriter, service ServiceProvider) {
+func writeMetricsIndex(w http.ResponseWriter, service ServiceProvider, log *zap.Logger) {
 	gauges := service.Gauges()
 
 	gNames := make([]string, 0, len(gauges))
@@ -440,7 +461,7 @@ func writeMetricsIndex(w http.ResponseWriter, service ServiceProvider) {
 	var buf bytes.Buffer
 	data := metricsIndexData{Gauges: gRows, Counters: cRows}
 	if err := metricsIndexTmpl.Execute(&buf, data); err != nil {
-		logger.Log.Error("metrics index template", zap.Error(err))
+		log.Error("metrics index template", zap.Error(err))
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}

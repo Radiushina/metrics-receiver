@@ -7,30 +7,27 @@ import (
 	"go.uber.org/zap"
 )
 
-// Log будет доступен всему коду как синглтон.
-// Никакой код навыка, кроме функции Initialize, не должен модифицировать эту переменную.
-// По умолчанию установлен no-op-логер, который не выводит никаких сообщений.
-var Log *zap.Logger = zap.NewNop()
-
-// Initialize инициализирует синглтон логера с необходимым уровнем логирования.
-func Initialize(level string) error {
-	// преобразуем текстовый уровень логирования в zap.AtomicLevel
+// New builds a zap production logger configured with the provided level.
+func New(level string) (*zap.Logger, error) {
 	lvl, err := zap.ParseAtomicLevel(level)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	// создаём новую конфигурацию логера
 	cfg := zap.NewProductionConfig()
-	// устанавливаем уровень
 	cfg.Level = lvl
-	// создаём логер на основе конфигурации
 	zl, err := cfg.Build()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	// устанавливаем синглтон
-	Log = zl
-	return nil
+	return zl, nil
+}
+
+// OrNop returns l if it's not nil, otherwise a no-op logger.
+func OrNop(l *zap.Logger) *zap.Logger {
+	if l == nil {
+		return zap.NewNop()
+	}
+	return l
 }
 
 type loggingResponseWriter struct {
@@ -58,15 +55,15 @@ func (lw *loggingResponseWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
-// LoggingMiddleware пишет в лог сведения о запросе (URI, метод, длительность)
-// и ответе (код статуса, размер тела).
-func LoggingMiddleware(next http.Handler) http.Handler {
+// LoggingMiddleware logs request details (URI, method, duration)
+// and response details (status code, response size).
+func LoggingMiddleware(log *zap.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		lw := &loggingResponseWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(lw, r)
 		uri := r.URL.RequestURI()
-		Log.Info("HTTP",
+		log.Info("HTTP request",
 			zap.String("uri", uri),
 			zap.String("method", r.Method),
 			zap.Duration("duration", time.Since(start)),
