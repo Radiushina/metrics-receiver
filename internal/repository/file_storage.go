@@ -12,13 +12,11 @@ import (
 	models "github.com/Radiushina/metrics-receiver.git/internal/model"
 )
 
-// FileStorage сохраняет текущий снимок метрик из памяти в JSON-файл.
+// FileStorage persists the in-memory metrics snapshot to a JSON file.
 //
-// Запись выполняется через временный файл с последующим атомарным rename.
-// Это защищает от ситуации,
-// когда процесс падает/перезапускается во время сохранения:
-// после старта RESTORE увидит либо
-// предыдущий корректный снимок, либо новый, но не частично записанный JSON.
+// It writes through a temporary file followed by an atomic rename.
+// This prevents partially written JSON if the process crashes/restarts mid-save:
+// on startup Restore will see either the previous valid snapshot or the new one.
 type FileStorage struct {
 	repo *Repository
 	path string
@@ -26,6 +24,9 @@ type FileStorage struct {
 
 // NewFileStorage creates a file-backed snapshot storage for the given repository.
 func NewFileStorage(repo *Repository, path string) *FileStorage {
+	if path == "" {
+		panic("file storage path is empty")
+	}
 	return &FileStorage{
 		repo: repo,
 		path: path,
@@ -34,10 +35,6 @@ func NewFileStorage(repo *Repository, path string) *FileStorage {
 
 // Save persists the current metrics snapshot to disk.
 func (s *FileStorage) Save(_ context.Context) error {
-	if s.path == "" {
-		return errors.New("file storage path is empty")
-	}
-
 	dir := filepath.Dir(s.path)
 	if dir != "." && dir != "" {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -65,7 +62,7 @@ func (s *FileStorage) Save(_ context.Context) error {
 	}()
 
 	enc := json.NewEncoder(f)
-	// Encode — это и есть маршалинг в JSON, только потоковый: без промежуточного []byte пишем сразу в файл.
+	// Encode marshals to JSON in a streaming fashion, writing directly to the file.
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(metrics); err != nil {
 		return fmt.Errorf("encode metrics: %w", err)
@@ -87,10 +84,6 @@ func (s *FileStorage) Save(_ context.Context) error {
 
 // Restore loads metrics from disk into the repository if the file exists.
 func (s *FileStorage) Restore(_ context.Context) error {
-	if s.path == "" {
-		return errors.New("file storage path is empty")
-	}
-
 	f, ok, err := openStorageFile(s.path)
 	if err != nil {
 		return err

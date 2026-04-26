@@ -99,7 +99,7 @@ func validate() error {
 		return fmt.Errorf("STORE_INTERVAL is negative %d", flagStoreIntervalSec)
 	}
 	if flagFileStoragePath == "" {
-		return errors.New("FILE_STORAGE_PATH is empty")
+		panic("FILE_STORAGE_PATH is empty")
 	}
 	return nil
 }

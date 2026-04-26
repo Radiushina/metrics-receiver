@@ -118,6 +118,7 @@ func run() error {
 
 func NewMux(logg *zap.Logger, h *handler.Handler) http.Handler {
 	r := chi.NewRouter()
+	r.Use(middleware.Recover(logg))
 	r.Use(middleware.DecompressRequest)
 	r.Use(func(next http.Handler) http.Handler {
 		return logger.LoggingMiddleware(logg, next)
