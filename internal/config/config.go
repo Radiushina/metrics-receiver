@@ -15,16 +15,25 @@ type AgentConfig struct {
 // Поля-указатели равны nil, если соответствующая переменная окружения
 // не задана.
 //
+// ADDRESS — адрес и порт, на которых слушает HTTP-сервер (перекрывает значение
+// по умолчанию и совпадает по смыслу с флагом командной строки -a).
+//
+// DATABASE_DSN — строка подключения к PostgreSQL (DSN); при наличии переменной
+// перекрывает значение флага -d. Формат: postgres://user:pass@host:port/db?sslmode=...
+//
 // STORE_INTERVAL интерпретируется как целое число секунд. Значение 0 включает
 // синхронное сохранение
 // (после каждого обновления метрики); положительное значение включает
 // периодическое сохранение
 // с указанным интервалом.
+//
 // FILE_STORAGE_PATH — путь до файла, используемого для сохранения метрик.
+//
 // RESTORE определяет, нужно ли загружать сохранённые метрики из
 // FILE_STORAGE_PATH при старте.
 type ServiceConfig struct {
 	RunAddr         *string `env:"ADDRESS"`
+	DbDsn           *string `env:"DATABASE_DSN"`
 	StoreInterval   *int    `env:"STORE_INTERVAL"`
 	FileStoragePath *string `env:"FILE_STORAGE_PATH"`
 	Restore         *bool   `env:"RESTORE"`

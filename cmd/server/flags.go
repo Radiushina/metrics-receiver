@@ -16,6 +16,7 @@ const (
 	defaultLogLevel         = "info"
 	defaultStoreIntervalSec = 300
 	defaultFileStoragePath  = "./metrics-db.json"
+	defaultDatabaseDSN      = ""
 )
 
 var (
@@ -24,6 +25,7 @@ var (
 	flagStoreIntervalSec int
 	flagFileStoragePath  string
 	flagRestore          bool
+	flagDatabaseDSN      string
 )
 
 func parseFlags() (exitCode int, err error) {
@@ -56,6 +58,7 @@ func registerFlags(fs *flag.FlagSet) {
 	fs.IntVar(&flagStoreIntervalSec, "i", defaultStoreIntervalSec, "store interval in seconds (0 means synchronous)")
 	fs.StringVar(&flagFileStoragePath, "f", defaultFileStoragePath, "file path to persist metrics")
 	fs.BoolVar(&flagRestore, "r", false, "restore persisted metrics on startup")
+	fs.StringVar(&flagDatabaseDSN, "d", defaultDatabaseDSN, "database dsn")
 }
 
 func parseCLI(fs *flag.FlagSet) (exitCode int, err error) {
@@ -81,6 +84,9 @@ func applyEnvConfig(envCfg config.ServiceConfig) {
 	if envCfg.Restore != nil {
 		flagRestore = *envCfg.Restore
 	}
+	if envCfg.DbDsn != nil {
+		flagDatabaseDSN = *envCfg.DbDsn
+	}
 }
 
 func applyEnvLogLevel() {
@@ -92,6 +98,7 @@ func applyEnvLogLevel() {
 func normalize() {
 	flagRunAddr = strings.TrimSpace(flagRunAddr)
 	flagFileStoragePath = strings.TrimSpace(flagFileStoragePath)
+	flagDatabaseDSN = strings.TrimSpace(flagDatabaseDSN)
 }
 
 func validate() error {

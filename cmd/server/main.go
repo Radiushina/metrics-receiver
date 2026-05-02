@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/Radiushina/metrics-receiver.git/internal/repository"
 	"github.com/Radiushina/metrics-receiver.git/internal/service"
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 )
 
@@ -46,6 +48,26 @@ func run() error {
 		syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	var dbPool *pgxpool.Pool
+	defer func() {
+		if dbPool != nil {
+			dbPool.Close()
+		}
+	}()
+
+	if dsn := strings.TrimSpace(flagDatabaseDSN); dsn != "" {
+		p, err := pgxpool.New(ctx, dsn)
+		if err != nil {
+			return fmt.Errorf("postgres pool: %w", err)
+		}
+		if err := p.Ping(ctx); err != nil {
+			p.Close()
+			return fmt.Errorf("postgres ping: %w", err)
+		}
+		dbPool = p
+		logg.Info("connected to postgresql", zap.String("dsn", dsn))
+	}
+
 	repos := repository.NewRepository()
 	svc := service.NewService(repos)
 
@@ -61,7 +83,11 @@ func run() error {
 		saver = fileStorage
 	}
 
-	h := handler.NewHandler(svc, saver, logg)
+	var dbForPing handler.DBChecker
+	if dbPool != nil {
+		dbForPing = dbPool
+	}
+	h := handler.NewHandler(svc, saver, logg, dbForPing)
 
 	logg.Info("starting metrics server on",
 		zap.String("address", flagRunAddr))
@@ -125,6 +151,7 @@ func NewMux(logg *zap.Logger, h *handler.Handler) http.Handler {
 	})
 	r.Use(middleware.CompressResponse)
 	r.Get("/", h.GetMetrics())
+	r.Get("/ping", h.PingDB())
 	r.Post("/update/{mtype}/{metric}/{value}", h.UpdateFromPath())
 	r.Post("/update", h.UpdateFromBody())
 	r.Post("/update/", h.UpdateFromBody())

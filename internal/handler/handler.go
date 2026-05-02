@@ -56,14 +56,15 @@ var metricsIndexTmpl = template.Must(template.New("metricsIndex").
 `))
 
 type (
-	// Handler wires HTTP handlers to the service layer.
+	// Handler связывает HTTP-обработчики со слоем сервиса.
 	Handler struct {
 		service ServiceProvider
 		saver   Saver
 		log     *zap.Logger
+		db      DBChecker
 	}
 
-	// ServiceProvider describes the service operations required by Handler.
+	// ServiceProvider описывает операции сервиса, которые нужны Handler.
 	ServiceProvider interface {
 		SetGauge(name string, value float64)
 		AddCounter(name string, delta int64)
@@ -73,56 +74,79 @@ type (
 		Counters() map[string]int64
 	}
 
-	// Saver persists metrics after updates when enabled.
+	// Saver сохраняет метрики после обновлений, если сохранение включено.
 	Saver interface {
 		Save(ctx context.Context) error
 	}
+
+	// DBChecker проверяет доступность БД (например *pgxpool.Pool).
+	DBChecker interface {
+		Ping(ctx context.Context) error
+	}
 )
 
-// NewHandler constructs a Handler with the given service, optional saver and logger.
-func NewHandler(service ServiceProvider, saver Saver, log *zap.Logger) *Handler {
+// NewHandler создаёт Handler с указанным сервисом, опциональным Saver, логгером
+// и опциональной проверкой БД (db может быть nil, если DSN не задан).
+func NewHandler(service ServiceProvider, saver Saver, log *zap.Logger, db DBChecker) *Handler {
 	log = logger.OrNop(log)
 	return &Handler{
 		service: service,
 		saver:   saver,
 		log:     log,
+		db:      db,
 	}
 }
 
-// GetMetrics returns an HTTP handler
-// that writes all collected metrics to the response.
+// GetMetrics возвращает HTTP-обработчик, который записывает в ответ
+// все собранные метрики.
 func (h *Handler) GetMetrics() http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		writeMetricsIndex(w, h.service, h.log)
 	}
 }
 
-// GetMetric returns an HTTP handler
-// that writes a single metric value in plain text format.
+// PingDB возвращает HTTP-обработчик, который проверяет соединение с бд.
+func (h *Handler) PingDB() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if h.db == nil {
+			http.Error(w, "database not configured", http.StatusInternalServerError)
+			return
+		}
+		if err := h.db.Ping(r.Context()); err != nil {
+			h.log.Error("db ping", zap.Error(err))
+			http.Error(w, "database unavailable", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+// GetMetric возвращает HTTP-обработчик, который записывает значение
+// одной метрики в виде простого текста.
 func (h *Handler) GetMetric() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		getMetricValue(w, r, h.service, h.log)
 	}
 }
 
-// GetMetricValue returns an HTTP handler
-// that writes a single metric value in JSON format.
+// GetMetricValue возвращает HTTP-обработчик, который записывает значение
+// одной метрики в формате JSON.
 func (h *Handler) GetMetricValue() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		getMetric(w, r, h.service, h.log)
 	}
 }
 
-// UpdateFromPath returns an HTTP handler
-// that updates a metric from URL path parameters.
+// UpdateFromPath возвращает HTTP-обработчик, который обновляет метрику
+// по параметрам пути URL.
 func (h *Handler) UpdateFromPath() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		updateMetricsFromPath(w, r, h.service, h.saver, h.log)
 	}
 }
 
-// UpdateFromBody returns an HTTP handler
-// that updates a metric from a JSON request body.
+// UpdateFromBody возвращает HTTP-обработчик, который обновляет метрику
+// из JSON-тела запроса.
 func (h *Handler) UpdateFromBody() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		updateMetricsFromBody(w, r, h.service, h.saver, h.log)

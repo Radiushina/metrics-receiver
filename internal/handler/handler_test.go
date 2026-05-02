@@ -3,6 +3,7 @@ package handler_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -88,8 +89,23 @@ func (m *mockService) Counters() map[string]int64 {
 	return out
 }
 
+type mockDBChecker struct {
+	err error
+}
+
+func (m *mockDBChecker) Ping(ctx context.Context) error {
+	return m.err
+}
+
+func newPingMux(db handler.DBChecker) http.Handler {
+	h := handler.NewHandler(newMockService(), nil, zap.NewNop(), db)
+	r := chi.NewRouter()
+	r.Get("/ping", h.PingDB())
+	return r
+}
+
 func newTestMux(svc handler.ServiceProvider) http.Handler {
-	h := handler.NewHandler(svc, nil, zap.NewNop())
+	h := handler.NewHandler(svc, nil, zap.NewNop(), nil)
 	r := chi.NewRouter()
 	r.Get("/", h.GetMetrics())
 	r.Post("/update/{mtype}/{metric}/{value}", h.UpdateFromPath())
@@ -472,5 +488,47 @@ func TestHandler_GetAll_HTML_AllCountersListed(t *testing.T) {
 	body := rec.Body.String()
 	if !strings.Contains(body, "PollCount: 1") || !strings.Contains(body, "OtherCounter: 2") {
 		t.Fatalf("expected both counters in body %q", body)
+	}
+}
+
+func TestHandler_Ping_NoDB_InternalServerError(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	mux := newPingMux(nil)
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/ping", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status %d, body %q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandler_Ping_OK(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	mux := newPingMux(&mockDBChecker{err: nil})
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/ping", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, body %q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandler_Ping_DBError_InternalServerError(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	mux := newPingMux(&mockDBChecker{err: errors.New("connection refused")})
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/ping", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status %d, body %q", rec.Code, rec.Body.String())
 	}
 }
