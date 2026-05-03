@@ -83,7 +83,7 @@ func (s *FileStorage) Save(_ context.Context) error {
 }
 
 // Restore loads metrics from disk into the repository if the file exists.
-func (s *FileStorage) Restore(_ context.Context) error {
+func (s *FileStorage) Restore(ctx context.Context) error {
 	f, ok, err := openStorageFile(s.path)
 	if err != nil {
 		return err
@@ -105,7 +105,7 @@ func (s *FileStorage) Restore(_ context.Context) error {
 	if err != nil {
 		return err
 	}
-	applyMetricsSnapshot(s.repo, metrics)
+	applyMetricsSnapshot(ctx, s.repo, metrics)
 	return nil
 }
 
@@ -136,14 +136,14 @@ func decodeMetrics(b []byte) ([]models.Metrics, error) {
 	return metrics, nil
 }
 
-func applyMetricsSnapshot(repo *MemoryRepo, metrics []models.Metrics) {
+func applyMetricsSnapshot(ctx context.Context, repo *MemoryRepo, metrics []models.Metrics) {
 	for _, m := range metrics {
 		switch m.MType {
 		case models.Gauge:
 			if m.Value == nil {
 				continue
 			}
-			repo.SetGauge(context.Background(), m.ID, *m.Value)
+			repo.SetGauge(ctx, m.ID, *m.Value)
 		case models.Counter:
 			if m.Delta == nil {
 				continue
