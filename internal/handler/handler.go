@@ -101,7 +101,7 @@ func NewHandler(service ServiceProvider, saver Saver, log *zap.Logger, db DBChec
 // все собранные метрики.
 func (h *Handler) GetMetrics() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		writeMetricsIndex(w, r.Context(), h.service, h.log)
+		writeMetricsIndex(r.Context(), w, h.service, h.log)
 	}
 }
 
@@ -455,7 +455,7 @@ func getMetricValue(w http.ResponseWriter, r *http.Request, service ServiceProvi
 	}
 }
 
-func writeMetricsIndex(w http.ResponseWriter, ctx context.Context, service ServiceProvider, log *zap.Logger) {
+func writeMetricsIndex(ctx context.Context, w http.ResponseWriter, service ServiceProvider, log *zap.Logger) {
 	gauges := service.Gauges(ctx)
 
 	gNames := make([]string, 0, len(gauges))

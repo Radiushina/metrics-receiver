@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
+	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5" // side-effect: драйвер БД pgx5 для migrate.New (DSN со схемой pgx5://).
+	_ "github.com/golang-migrate/migrate/v4/source/file"     // side-effect: источник миграций file:// для migrate.New.
 )
 
 // migrateDatabaseURL подставляет схему pgx5:// для golang-migrate с драйвером pgx/v5
