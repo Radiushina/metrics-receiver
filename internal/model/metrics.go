@@ -1,21 +1,24 @@
 package models
 
-// MetricType is a metric kind supported by the service.
+// MetricType — строковый перечислимый тип: вид метрики в HTTP/JSON API.
+// Значение "counter" или "gauge" задаёт семантику полей Delta и Value.
 type MetricType string
 
-// Supported metric kinds and well-known metric names.
 const (
-	Counter   MetricType = "counter"
-	Gauge     MetricType = "gauge"
-	PollCount            = "PollCount"
+	// Counter — счётчик: монотонно накапливаемое целое; в запросах передаётся приращение (delta).
+	Counter MetricType = "counter"
+	// Gauge — измеритель: произвольное вещественное значение в момент времени.
+	Gauge MetricType = "gauge"
 )
 
-// Metrics represents a single metric in the JSON API.
-//
-// Delta and Value are pointers to distinguish an explicit 0 from an absent field.
+// Metrics — одна метрика в теле JSON (обновление или запрос значения).
 type Metrics struct {
-	ID    string     `json:"id"`
+	// ID — имя метрики (строковый идентификатор).
+	ID string `json:"id"`
+	// MType — вид: counter или gauge; определяет, какое из полей Delta/Value используется.
 	MType MetricType `json:"type"`
-	Delta *int64     `json:"delta,omitempty"`
-	Value *float64   `json:"value,omitempty"`
+	// Delta — для counter: приращение или текущее значение в ответе API; nil — поле не передано.
+	Delta *int64 `json:"delta,omitempty"`
+	// Value — для gauge: значение с плавающей точкой; nil — поле не передано.
+	Value *float64 `json:"value,omitempty"`
 }
