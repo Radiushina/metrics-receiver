@@ -66,12 +66,12 @@ type (
 
 	// ServiceProvider описывает операции сервиса, которые нужны Handler.
 	ServiceProvider interface {
-		SetGauge(name string, value float64)
-		AddCounter(name string, delta int64)
-		GetGauge(name string) (float64, bool)
-		GetCounter(name string) (int64, bool)
-		Gauges() map[string]float64
-		Counters() map[string]int64
+		SetGauge(ctx context.Context, name string, value float64)
+		AddCounter(ctx context.Context, name string, delta int64)
+		GetGauge(ctx context.Context, name string) (float64, bool)
+		GetCounter(ctx context.Context, name string) (int64, bool)
+		Gauges(ctx context.Context) map[string]float64
+		Counters(ctx context.Context) map[string]int64
 	}
 
 	// Saver сохраняет метрики после обновлений, если сохранение включено.
@@ -100,8 +100,8 @@ func NewHandler(service ServiceProvider, saver Saver, log *zap.Logger, db DBChec
 // GetMetrics возвращает HTTP-обработчик, который записывает в ответ
 // все собранные метрики.
 func (h *Handler) GetMetrics() http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
-		writeMetricsIndex(w, h.service, h.log)
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeMetricsIndex(w, r.Context(), h.service, h.log)
 	}
 }
 
@@ -186,7 +186,7 @@ func updateMetricsFromPath(
 			http.Error(w, "invalid gauge value", http.StatusBadRequest)
 			return
 		}
-		service.SetGauge(metric, v)
+		service.SetGauge(r.Context(), metric, v)
 		log.Sugar().Infof("server: gauge %s = %g", metric, v)
 	case models.Counter:
 		v, err := strconv.ParseInt(valueStr, 10, 64)
@@ -194,7 +194,7 @@ func updateMetricsFromPath(
 			http.Error(w, "invalid counter value", http.StatusBadRequest)
 			return
 		}
-		service.AddCounter(metric, v)
+		service.AddCounter(r.Context(), metric, v)
 		log.Sugar().Infof("server: counter %s += %d", metric, v)
 	default:
 		http.Error(w, fmt.Sprintf("invalid metric type: %q", mtype), http.StatusBadRequest)
@@ -233,7 +233,7 @@ func updateMetricsFromBody(
 		return
 	}
 
-	out, status, err := applyMetricUpdate(log, service, in)
+	out, status, err := applyMetricUpdate(r.Context(), log, service, in)
 	if err != nil {
 		http.Error(w, err.Error(), status)
 		return
@@ -275,21 +275,23 @@ func unmarshalMetric(b []byte) (models.Metrics, error) {
 }
 
 func applyMetricUpdate(
+	ctx context.Context,
 	log *zap.Logger,
 	service ServiceProvider,
 	in models.Metrics,
 ) (models.Metrics, int, error) {
 	switch in.MType {
 	case models.Counter:
-		return applyCounterUpdate(log, service, in)
+		return applyCounterUpdate(ctx, log, service, in)
 	case models.Gauge:
-		return applyGaugeUpdate(log, service, in)
+		return applyGaugeUpdate(ctx, log, service, in)
 	default:
 		return models.Metrics{}, http.StatusBadRequest, fmt.Errorf("invalid metric type: %q", in.MType)
 	}
 }
 
 func applyCounterUpdate(
+	ctx context.Context,
 	log *zap.Logger,
 	service ServiceProvider,
 	in models.Metrics,
@@ -298,10 +300,10 @@ func applyCounterUpdate(
 		return models.Metrics{}, http.StatusBadRequest, errors.New("missing counter delta")
 	}
 
-	service.AddCounter(in.ID, *in.Delta)
+	service.AddCounter(ctx, in.ID, *in.Delta)
 	log.Sugar().Infof("server: counter %s += %d", in.ID, *in.Delta)
 
-	total, ok := service.GetCounter(in.ID)
+	total, ok := service.GetCounter(ctx, in.ID)
 	if !ok {
 		return models.Metrics{}, http.StatusInternalServerError, errors.New("internal server error")
 	}
@@ -314,6 +316,7 @@ func applyCounterUpdate(
 }
 
 func applyGaugeUpdate(
+	ctx context.Context,
 	log *zap.Logger,
 	service ServiceProvider,
 	in models.Metrics,
@@ -322,7 +325,7 @@ func applyGaugeUpdate(
 		return models.Metrics{}, http.StatusBadRequest, errors.New("missing gauge value")
 	}
 
-	service.SetGauge(in.ID, *in.Value)
+	service.SetGauge(ctx, in.ID, *in.Value)
 	log.Sugar().Infof("server: gauge %s = %g", in.ID, *in.Value)
 
 	v := *in.Value
@@ -386,14 +389,14 @@ func getMetric(w http.ResponseWriter, r *http.Request, service ServiceProvider, 
 
 	switch mtype {
 	case models.Gauge:
-		v, ok := service.GetGauge(req.ID)
+		v, ok := service.GetGauge(r.Context(), req.ID)
 		if !ok {
 			http.NotFound(w, r)
 			return
 		}
 		out.Value = &v
 	case models.Counter:
-		v, ok := service.GetCounter(req.ID)
+		v, ok := service.GetCounter(r.Context(), req.ID)
 		if !ok {
 			http.NotFound(w, r)
 			return
@@ -430,7 +433,7 @@ func getMetricValue(w http.ResponseWriter, r *http.Request, service ServiceProvi
 
 	switch mtype {
 	case models.Gauge:
-		v, ok := service.GetGauge(metric)
+		v, ok := service.GetGauge(r.Context(), metric)
 		if !ok {
 			http.NotFound(w, r)
 			return
@@ -439,7 +442,7 @@ func getMetricValue(w http.ResponseWriter, r *http.Request, service ServiceProvi
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(strconv.FormatFloat(v, 'g', -1, 64)))
 	case models.Counter:
-		v, ok := service.GetCounter(metric)
+		v, ok := service.GetCounter(r.Context(), metric)
 		if !ok {
 			http.NotFound(w, r)
 			return
@@ -452,8 +455,8 @@ func getMetricValue(w http.ResponseWriter, r *http.Request, service ServiceProvi
 	}
 }
 
-func writeMetricsIndex(w http.ResponseWriter, service ServiceProvider, log *zap.Logger) {
-	gauges := service.Gauges()
+func writeMetricsIndex(w http.ResponseWriter, ctx context.Context, service ServiceProvider, log *zap.Logger) {
+	gauges := service.Gauges(ctx)
 
 	gNames := make([]string, 0, len(gauges))
 	for n := range gauges {
@@ -468,7 +471,7 @@ func writeMetricsIndex(w http.ResponseWriter, service ServiceProvider, log *zap.
 		})
 	}
 
-	counters := service.Counters()
+	counters := service.Counters(ctx)
 	cNames := make([]string, 0, len(counters))
 	for n := range counters {
 		cNames = append(cNames, n)

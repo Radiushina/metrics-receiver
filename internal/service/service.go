@@ -1,5 +1,7 @@
 package service
 
+import "context"
+
 type (
 	// Service provides a thin API over the metrics repository.
 	Service struct {
@@ -8,12 +10,12 @@ type (
 
 	// RepositoryProvider describes the repository operations.
 	RepositoryProvider interface {
-		SetGauge(name string, value float64)
-		AddCounter(name string, delta int64)
-		GetGauge(name string) (float64, bool)
-		GetCounter(name string) (int64, bool)
-		Gauges() map[string]float64
-		Counters() map[string]int64
+		SetGauge(ctx context.Context, name string, value float64)
+		AddCounter(ctx context.Context, name string, delta int64)
+		GetGauge(ctx context.Context, name string) (float64, bool)
+		GetCounter(ctx context.Context, name string) (int64, bool)
+		Gauges(ctx context.Context) map[string]float64
+		Counters(ctx context.Context) map[string]int64
 	}
 )
 
@@ -25,31 +27,31 @@ func NewService(repo RepositoryProvider) Service {
 }
 
 // SetGauge stores a gauge value by name.
-func (s Service) SetGauge(name string, value float64) {
-	s.repo.SetGauge(name, value)
+func (s Service) SetGauge(ctx context.Context, name string, value float64) {
+	s.repo.SetGauge(ctx, name, value)
 }
 
 // AddCounter increments a counter by delta.
-func (s Service) AddCounter(name string, value int64) {
-	s.repo.AddCounter(name, value)
+func (s Service) AddCounter(ctx context.Context, name string, value int64) {
+	s.repo.AddCounter(ctx, name, value)
 }
 
 // GetGauge returns a gauge value and whether it exists.
-func (s Service) GetGauge(name string) (float64, bool) {
-	return s.repo.GetGauge(name)
+func (s Service) GetGauge(ctx context.Context, name string) (float64, bool) {
+	return s.repo.GetGauge(ctx, name)
 }
 
 // GetCounter returns a counter value and whether it exists.
-func (s Service) GetCounter(name string) (int64, bool) {
-	return s.repo.GetCounter(name)
+func (s Service) GetCounter(ctx context.Context, name string) (int64, bool) {
+	return s.repo.GetCounter(ctx, name)
 }
 
 // Gauges returns a copy of all gauge values.
-func (s Service) Gauges() map[string]float64 {
-	return s.repo.Gauges()
+func (s Service) Gauges(ctx context.Context) map[string]float64 {
+	return s.repo.Gauges(ctx)
 }
 
 // Counters returns a copy of all counter values.
-func (s Service) Counters() map[string]int64 {
-	return s.repo.Counters()
+func (s Service) Counters(ctx context.Context) map[string]int64 {
+	return s.repo.Counters(ctx)
 }

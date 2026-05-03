@@ -1,6 +1,6 @@
 BINARY = metrics-server
 
-.PHONY: run lint run-server run-agent run-all build build-server build-agent migrate-postgres test-iter1 test-iter2 test-iter3 test-iter7 test-iter8 test-iter9 unit
+.PHONY: run lint run-server run-agent run-all build build-server build-agent migrate-postgres test-iter1 test-iter2 test-iter3 test-iter7 test-iter8 test-iter9 test-iter11 unit
 
 lint:
 	golangci-lint run --config .golangci.yml
@@ -73,6 +73,20 @@ test-iter9: build-server build-agent
 		-agent-binary-path=cmd/agent/agent \
 		-binary-path=cmd/server/server \
 		-file-storage-path="$$TEMP_FILE" \
+		-server-port="$$SERVER_PORT" \
+		-source-path=.
+
+# Тот же сценарий, что в CI «Code increment #11». Нужен доступный PostgreSQL.
+# Порт сервера: ITER11_SERVER_PORT (по умолчанию 8080). DSN: ITER11_DATABASE_DSN.
+test-iter11: build-server build-agent
+	@SERVER_PORT="$${ITER11_SERVER_PORT:-8080}"; \
+	export SERVER_PORT; \
+	export ADDRESS="localhost:$$SERVER_PORT"; \
+	DSN="$${ITER11_DATABASE_DSN:-postgres://developer@localhost:5432/metrics?sslmode=disable}"; \
+	./metricstest -test.v -test.run='^TestIteration11$$' \
+		-agent-binary-path=cmd/agent/agent \
+		-binary-path=cmd/server/server \
+		-database-dsn="$$DSN" \
 		-server-port="$$SERVER_PORT" \
 		-source-path=.
 

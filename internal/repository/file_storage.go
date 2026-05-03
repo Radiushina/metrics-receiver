@@ -18,12 +18,12 @@ import (
 // This prevents partially written JSON if the process crashes/restarts mid-save:
 // on startup Restore will see either the previous valid snapshot or the new one.
 type FileStorage struct {
-	repo *Repository
+	repo *MemoryRepo
 	path string
 }
 
 // NewFileStorage creates a file-backed snapshot storage for the given repository.
-func NewFileStorage(repo *Repository, path string) *FileStorage {
+func NewFileStorage(repo *MemoryRepo, path string) *FileStorage {
 	if path == "" {
 		panic("file storage path is empty")
 	}
@@ -136,14 +136,14 @@ func decodeMetrics(b []byte) ([]models.Metrics, error) {
 	return metrics, nil
 }
 
-func applyMetricsSnapshot(repo *Repository, metrics []models.Metrics) {
+func applyMetricsSnapshot(repo *MemoryRepo, metrics []models.Metrics) {
 	for _, m := range metrics {
 		switch m.MType {
 		case models.Gauge:
 			if m.Value == nil {
 				continue
 			}
-			repo.SetGauge(m.ID, *m.Value)
+			repo.SetGauge(context.Background(), m.ID, *m.Value)
 		case models.Counter:
 			if m.Delta == nil {
 				continue
@@ -154,8 +154,8 @@ func applyMetricsSnapshot(repo *Repository, metrics []models.Metrics) {
 }
 
 func (s *FileStorage) snapshot() []models.Metrics {
-	gauges := s.repo.Gauges()
-	counters := s.repo.Counters()
+	gauges := s.repo.Gauges(context.Background())
+	counters := s.repo.Counters(context.Background())
 
 	out := make([]models.Metrics, 0, len(gauges)+len(counters))
 

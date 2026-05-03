@@ -55,7 +55,10 @@ func run() error {
 		}
 	}()
 
-	if dsn := strings.TrimSpace(flagDatabaseDSN); dsn != "" {
+	dsn := strings.TrimSpace(flagDatabaseDSN)
+	useDB := dsn != ""
+
+	if useDB {
 		p, err := pgxpool.New(ctx, dsn)
 		if err != nil {
 			return fmt.Errorf("postgres pool: %w", err)
@@ -64,22 +67,35 @@ func run() error {
 			p.Close()
 			return fmt.Errorf("postgres ping: %w", err)
 		}
+		if err := repository.MigrateUp(dsn); err != nil {
+			p.Close()
+			return err
+		}
 		dbPool = p
 		logg.Info("connected to postgresql", zap.String("dsn", dsn))
 	}
 
-	repos := repository.NewRepository()
-	svc := service.NewService(repos)
+	var store service.RepositoryProvider
+	var mem *repository.MemoryRepo
+	var fileStorage *repository.FileStorage
 
-	fileStorage := repository.NewFileStorage(repos, flagFileStoragePath)
-	if flagRestore {
-		if err := fileStorage.Restore(ctx); err != nil {
-			return err
+	if useDB {
+		store = repository.NewPostgresRepo(dbPool)
+	} else {
+		mem = repository.NewMemoryRepo()
+		store = mem
+		fileStorage = repository.NewFileStorage(mem, flagFileStoragePath)
+		if flagRestore {
+			if err := fileStorage.Restore(ctx); err != nil {
+				return err
+			}
 		}
 	}
 
+	svc := service.NewService(store)
+
 	var saver handler.Saver
-	if flagStoreIntervalSec == 0 {
+	if !useDB && flagStoreIntervalSec == 0 && fileStorage != nil {
 		saver = fileStorage
 	}
 
@@ -94,7 +110,7 @@ func run() error {
 	srv := &Server{}
 	mux := NewMux(logg, h)
 
-	if flagStoreIntervalSec > 0 {
+	if !useDB && flagStoreIntervalSec > 0 && fileStorage != nil {
 		interval := time.Duration(flagStoreIntervalSec) * time.Second
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()

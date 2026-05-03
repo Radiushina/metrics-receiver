@@ -24,7 +24,7 @@ func TestNewMux_PostGauge_OK(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	repo := repository.NewRepository()
+	repo := repository.NewMemoryRepo()
 	svc := service.NewService(repo)
 	h := handler.NewHandler(svc, nil, zap.NewNop(), nil)
 	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
@@ -53,7 +53,7 @@ func TestNewMux_PostCounter_OK(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	repo := repository.NewRepository()
+	repo := repository.NewMemoryRepo()
 	svc := service.NewService(repo)
 	h := handler.NewHandler(svc, nil, zap.NewNop(), nil)
 	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
@@ -82,7 +82,7 @@ func TestNewMux_InvalidType_BadRequest(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	repo := repository.NewRepository()
+	repo := repository.NewMemoryRepo()
 	svc := service.NewService(repo)
 	h := handler.NewHandler(svc, nil, zap.NewNop(), nil)
 	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
@@ -111,7 +111,7 @@ func TestNewMux_JSONEndpoints_TrailingSlash_OK(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	repo := repository.NewRepository()
+	repo := repository.NewMemoryRepo()
 	svc := service.NewService(repo)
 	h := handler.NewHandler(svc, nil, zap.NewNop(), nil)
 	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
@@ -157,7 +157,7 @@ func TestNewMux_GzipRequestBody_OK(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	repo := repository.NewRepository()
+	repo := repository.NewMemoryRepo()
 	svc := service.NewService(repo)
 	h := handler.NewHandler(svc, nil, zap.NewNop(), nil)
 	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
@@ -196,7 +196,7 @@ func TestNewMux_GzipResponse_JSON_WhenAccepted(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	repo := repository.NewRepository()
+	repo := repository.NewMemoryRepo()
 	svc := service.NewService(repo)
 	h := handler.NewHandler(svc, nil, zap.NewNop(), nil)
 	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
@@ -258,7 +258,7 @@ func TestNewMux_GzipResponse_HTML_WhenAccepted(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	repo := repository.NewRepository()
+	repo := repository.NewMemoryRepo()
 	svc := service.NewService(repo)
 	h := handler.NewHandler(svc, nil, zap.NewNop(), nil)
 	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
@@ -301,9 +301,9 @@ func TestNewMux_DoesNotGzipTextPlain(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	repo := repository.NewRepository()
+	repo := repository.NewMemoryRepo()
 	svc := service.NewService(repo)
-	svc.SetGauge("HeapAlloc", 42.5)
+	svc.SetGauge(ctx, "HeapAlloc", 42.5)
 	h := handler.NewHandler(svc, nil, zap.NewNop(), nil)
 	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
 	t.Cleanup(ts.Close)
