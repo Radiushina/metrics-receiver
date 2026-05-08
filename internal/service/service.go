@@ -1,6 +1,10 @@
 package service
 
-import "context"
+import (
+	"context"
+
+	models "github.com/Radiushina/metrics-receiver.git/internal/model"
+)
 
 type (
 	// Service provides a thin API over the metrics repository.
@@ -16,6 +20,7 @@ type (
 		GetCounter(ctx context.Context, name string) (int64, bool)
 		Gauges(ctx context.Context) map[string]float64
 		Counters(ctx context.Context) map[string]int64
+		UpdateMetricsBatch(ctx context.Context, metrics []models.Metrics) error
 	}
 )
 
@@ -54,4 +59,9 @@ func (s Service) Gauges(ctx context.Context) map[string]float64 {
 // Counters returns a copy of all counter values.
 func (s Service) Counters(ctx context.Context) map[string]int64 {
 	return s.repo.Counters(ctx)
+}
+
+// UpdateMetricsBatch applies a list of metric updates in one operation.
+func (s Service) UpdateMetricsBatch(ctx context.Context, metrics []models.Metrics) error {
+	return s.repo.UpdateMetricsBatch(ctx, metrics)
 }

@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"sync"
+
+	models "github.com/Radiushina/metrics-receiver.git/internal/model"
 )
 
 // MemoryRepo — хранилище метрик в оперативной памяти, потокобезопасное.
@@ -77,4 +79,29 @@ func (r *MemoryRepo) Counters(_ context.Context) map[string]int64 {
 		out[k] = v
 	}
 	return out
+}
+
+// UpdateMetricsBatch применяет список обновлений метрик атомарно относительно других операций репозитория.
+// Для gauge выполняется запись абсолютного значения, для counter — инкремент на delta.
+// В отличие от Postgres-репозитория, здесь нет транзакций БД, но обновление защищено mutex'ом:
+// другие операции не увидят частично применённый список.
+func (r *MemoryRepo) UpdateMetricsBatch(_ context.Context, metrics []models.Metrics) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, m := range metrics {
+		switch m.MType {
+		case models.Gauge:
+			if m.Value == nil {
+				continue
+			}
+			r.gauges[m.ID] = *m.Value
+		case models.Counter:
+			if m.Delta == nil {
+				continue
+			}
+			r.counters[m.ID] += *m.Delta
+		}
+	}
+	return nil
 }

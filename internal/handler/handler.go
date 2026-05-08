@@ -72,6 +72,7 @@ type (
 		GetCounter(ctx context.Context, name string) (int64, bool)
 		Gauges(ctx context.Context) map[string]float64
 		Counters(ctx context.Context) map[string]int64
+		UpdateMetricsBatch(ctx context.Context, metrics []models.Metrics) error
 	}
 
 	// Saver сохраняет метрики после обновлений, если сохранение включено.
@@ -150,6 +151,12 @@ func (h *Handler) UpdateFromPath() http.HandlerFunc {
 func (h *Handler) UpdateFromBody() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		updateMetricsFromBody(w, r, h.service, h.saver, h.log)
+	}
+}
+
+func (h *Handler) UpdateMetrics() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		updateMetricsBatch(w, r, h.service, h.saver, h.log)
 	}
 }
 
@@ -247,6 +254,41 @@ func updateMetricsFromBody(
 	writeJSON(w, out)
 }
 
+func updateMetricsBatch(
+	w http.ResponseWriter,
+	r *http.Request,
+	service ServiceProvider,
+	saver Saver,
+	log *zap.Logger,
+) {
+	defer func() { _ = r.Body.Close() }()
+
+	reqBody, err := readRequestBody(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	logRequestBody(log, "metrics update request body", reqBody)
+
+	in, err := unmarshalMetrics(reqBody)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := service.UpdateMetricsBatch(r.Context(), in); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := persistIfEnabled(r.Context(), saver); err != nil {
+		http.Error(w, "failed to persist metrics", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, in)
+}
+
 func readRequestBody(r *http.Request) ([]byte, error) {
 	b, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -274,12 +316,20 @@ func unmarshalMetric(b []byte) (models.Metrics, error) {
 	return m, nil
 }
 
+func unmarshalMetrics(b []byte) ([]models.Metrics, error) {
+	var m []models.Metrics
+	if err := json.Unmarshal(b, &m); err != nil {
+		return []models.Metrics{}, errors.New("invalid JSON")
+	}
+	return m, nil
+}
+
 func applyMetricUpdate(
 	ctx context.Context,
 	log *zap.Logger,
 	service ServiceProvider,
 	in models.Metrics,
-) (models.Metrics, int, error) {
+) (out models.Metrics, statusCode int, err error) {
 	switch in.MType {
 	case models.Counter:
 		return applyCounterUpdate(ctx, log, service, in)
@@ -295,7 +345,7 @@ func applyCounterUpdate(
 	log *zap.Logger,
 	service ServiceProvider,
 	in models.Metrics,
-) (models.Metrics, int, error) {
+) (out models.Metrics, statusCode int, err error) {
 	if in.Delta == nil {
 		return models.Metrics{}, http.StatusBadRequest, errors.New("missing counter delta")
 	}
@@ -320,7 +370,7 @@ func applyGaugeUpdate(
 	log *zap.Logger,
 	service ServiceProvider,
 	in models.Metrics,
-) (models.Metrics, int, error) {
+) (out models.Metrics, statusCode int, err error) {
 	if in.Value == nil {
 		return models.Metrics{}, http.StatusBadRequest, errors.New("missing gauge value")
 	}

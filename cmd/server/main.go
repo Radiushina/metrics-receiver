@@ -166,13 +166,19 @@ func NewMux(logg *zap.Logger, h *handler.Handler) http.Handler {
 		return logger.LoggingMiddleware(logg, next)
 	})
 	r.Use(middleware.CompressResponse)
+
+	registerRoutes(r, h)
+	return r
+}
+
+func registerRoutes(r chi.Router, h *handler.Handler) {
 	r.Get("/", h.GetMetrics())
 	r.Get("/ping", h.PingDB())
 	r.Post("/update/{mtype}/{metric}/{value}", h.UpdateFromPath())
 	r.Post("/update", h.UpdateFromBody())
 	r.Post("/update/", h.UpdateFromBody())
+	r.Post("/updates/", h.UpdateMetrics())
 	r.Get("/value/{mtype}/{metric}", h.GetMetric())
 	r.Post("/value", h.GetMetricValue())
 	r.Post("/value/", h.GetMetricValue())
-	return r
 }

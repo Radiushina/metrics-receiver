@@ -2,13 +2,16 @@ package repository
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
+	models "github.com/Radiushina/metrics-receiver.git/internal/model"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // PostgresRepo хранит метрики в PostgreSQL.
-// Одна строка на имя метрики в таблицах gauges и counters (upsert по полю name).
+// Одна строка на имя метрики в таблицах gauges и counters.
 type PostgresRepo struct {
 	pool *pgxpool.Pool
 }
@@ -40,7 +43,7 @@ func (r *PostgresRepo) GetGauge(ctx context.Context, name string) (float64, bool
 	var v float64
 	err := r.pool.QueryRow(ctx, `SELECT value FROM gauges WHERE name = $1`, name).Scan(&v)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return 0, false
 		}
 		return 0, false
@@ -97,4 +100,63 @@ func (r *PostgresRepo) Counters(ctx context.Context) map[string]int64 {
 		out[name] = v
 	}
 	return out
+}
+
+// UpdateMetricsBatch применяет список обновлений метрик атомарно.
+// Для gauge выполняется upsert (запись абсолютного значения), для counter — инкремент на delta.
+// Все операции выполняются в одной транзакции: при любой ошибке происходит откат,
+// частичные обновления не сохраняются.
+func (r *PostgresRepo) UpdateMetricsBatch(ctx context.Context, metrics []models.Metrics) error {
+	if len(metrics) == 0 {
+		return nil
+	}
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	// можно вызвать Rollback в defer,
+	// если Commit будет раньше, то откат проигнорируется
+	defer tx.Rollback(ctx)
+
+	const qGauge = `
+INSERT INTO gauges (name, value) VALUES ($1, $2)
+ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`
+
+	const qCounter = `
+INSERT INTO counters (name, value) VALUES ($1, $2)
+ON CONFLICT (name) DO UPDATE SET value = counters.value + EXCLUDED.value`
+
+	const stmtGauge = "upsert_gauge"
+	const stmtCounter = "inc_counter"
+
+	if _, err := tx.Prepare(ctx, stmtGauge, qGauge); err != nil {
+		return err
+	}
+	if _, err := tx.Prepare(ctx, stmtCounter, qCounter); err != nil {
+		return err
+	}
+
+	for _, m := range metrics {
+		switch m.MType {
+		case models.Gauge:
+			if m.Value == nil {
+				return fmt.Errorf("missing gauge value for %q", m.ID)
+			}
+			if _, err := tx.Exec(ctx, stmtGauge, m.ID, *m.Value); err != nil {
+				return err
+			}
+		case models.Counter:
+			if m.Delta == nil {
+				return fmt.Errorf("missing counter delta for %q", m.ID)
+			}
+			if _, err := tx.Exec(ctx, stmtCounter, m.ID, *m.Delta); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("invalid metric type: %q", m.MType)
+		}
+	}
+
+	return tx.Commit(ctx)
 }
