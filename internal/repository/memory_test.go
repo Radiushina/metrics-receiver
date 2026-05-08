@@ -55,3 +55,35 @@ func TestMemStorage_GaugeAndCounter_Independent(t *testing.T) {
 		t.Fatalf("counter: %v", got)
 	}
 }
+
+func TestMemStorage_UpdateMetricsBatch_AppliesAll(t *testing.T) {
+	ctx := context.Background()
+	s := repository.NewMemoryRepo()
+
+	s.SetGauge(ctx, "RandomValue", 1.0)
+	s.AddCounter(ctx, models.PollCount, 10)
+
+	g1 := 3.14159
+	g2 := 1547.0
+	delta := int64(42)
+
+	in := []models.Metrics{
+		{ID: models.PollCount, MType: models.Counter, Delta: &delta},
+		{ID: "RandomValue", MType: models.Gauge, Value: &g1},
+		{ID: "ActiveUsers", MType: models.Gauge, Value: &g2},
+	}
+
+	if err := s.UpdateMetricsBatch(ctx, in); err != nil {
+		t.Fatalf("UpdateMetricsBatch: %v", err)
+	}
+
+	if got := s.Counters(ctx)[models.PollCount]; got != 52 {
+		t.Fatalf("counter: expected 52, got %v", got)
+	}
+	if got := s.Gauges(ctx)["RandomValue"]; got != g1 {
+		t.Fatalf("gauge RandomValue: expected %v, got %v", g1, got)
+	}
+	if got := s.Gauges(ctx)["ActiveUsers"]; got != g2 {
+		t.Fatalf("gauge ActiveUsers: expected %v, got %v", g2, got)
+	}
+}

@@ -89,6 +89,27 @@ func (m *mockService) Counters(_ context.Context) map[string]int64 {
 	return out
 }
 
+func (m *mockService) UpdateMetricsBatch(_ context.Context, metrics []models.Metrics) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, metric := range metrics {
+		switch metric.MType {
+		case models.Gauge:
+			if metric.Value == nil {
+				continue
+			}
+			m.gauges[metric.ID] = *metric.Value
+		case models.Counter:
+			if metric.Delta == nil {
+				continue
+			}
+			m.counters[metric.ID] += *metric.Delta
+		}
+	}
+	return nil
+}
+
 type mockDBChecker struct {
 	err error
 }
@@ -111,6 +132,7 @@ func newTestMux(svc handler.ServiceProvider) http.Handler {
 	r.Post("/update/{mtype}/{metric}/{value}", h.UpdateFromPath())
 	r.Post("/update", h.UpdateFromBody())
 	r.Post("/update/", h.UpdateFromBody())
+	r.Post("/updates/", h.UpdateMetrics())
 	r.Get("/value/{mtype}/{metric}", h.GetMetric())
 	r.Post("/value", h.GetMetricValue())
 	r.Post("/value/", h.GetMetricValue())
@@ -172,6 +194,48 @@ func TestHandler_PostCounter_OK(t *testing.T) {
 	}
 	if svc.counter(models.PollCount) != 3 {
 		t.Fatalf("stored counter: %v", svc.counter("PollCount"))
+	}
+}
+
+func TestHandler_PostUpdatesBatch_OK(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	svc := newMockService()
+	mux := newTestMux(svc)
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/updates/", strings.NewReader(
+		`[
+  {"id":"PollCount","type":"counter","delta":42},
+  {"id":"RandomValue","type":"gauge","value":3.14159},
+  {"id":"ActiveUsers","type":"gauge","value":1547}
+]`,
+	))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, body %q", rec.Code, rec.Body.String())
+	}
+
+	var got []models.Metrics
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("response JSON: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("expected 3 metrics, got %d: %+v", len(got), got)
+	}
+
+	if svc.counter(models.PollCount) != 42 {
+		t.Fatalf("stored counter: %v", svc.counter(models.PollCount))
+	}
+	if svc.gauge("RandomValue") != 3.14159 {
+		t.Fatalf("stored gauge RandomValue: %v", svc.gauge("RandomValue"))
+	}
+	if svc.gauge("ActiveUsers") != 1547 {
+		t.Fatalf("stored gauge ActiveUsers: %v", svc.gauge("ActiveUsers"))
 	}
 }
 
