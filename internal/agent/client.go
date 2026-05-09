@@ -138,37 +138,47 @@ func postGzippedMetric(client *resty.Client, baseURL string, gzBody []byte) erro
 		return err
 	}
 
-	resp, err := client.R().
-		SetHeader("Content-Type", "application/json").
-		SetHeader("Content-Encoding", "gzip").
-		SetHeader("Accept-Encoding", "gzip").
-		SetBody(gzBody).
-		Post(fullURL)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode() != http.StatusOK {
-		return fmt.Errorf("unexpected status %s", resp.Status())
-	}
-	return nil
+	return retryAgent(func() (bool, bool, error) {
+		resp, err := client.R().
+			SetHeader("Content-Type", "application/json").
+			SetHeader("Content-Encoding", "gzip").
+			SetHeader("Accept-Encoding", "gzip").
+			SetBody(gzBody).
+			Post(fullURL)
+		if err != nil {
+			return false, isRetriableTransportErr(err), err
+		}
+		if resp.StatusCode() == http.StatusOK {
+			return true, false, nil
+		}
+		if isRetriableHTTPStatus(resp.StatusCode()) {
+			return false, true, fmt.Errorf("unexpected status %s", resp.Status())
+		}
+		return false, false, fmt.Errorf("unexpected status %s", resp.Status())
+	})
 }
 
 func postGzippedMetricsBatch(client *resty.Client, baseURL string, gzBody []byte) error {
 	fullURL := strings.TrimRight(baseURL, "/") + "/updates/"
 
-	resp, err := client.R().
-		SetHeader("Content-Type", "application/json").
-		SetHeader("Content-Encoding", "gzip").
-		SetHeader("Accept-Encoding", "gzip").
-		SetBody(gzBody).
-		Post(fullURL)
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode() != http.StatusOK {
-		return fmt.Errorf("unexpected status %s", resp.Status())
-	}
-	return nil
+	return retryAgent(func() (bool, bool, error) {
+		resp, err := client.R().
+			SetHeader("Content-Type", "application/json").
+			SetHeader("Content-Encoding", "gzip").
+			SetHeader("Accept-Encoding", "gzip").
+			SetBody(gzBody).
+			Post(fullURL)
+		if err != nil {
+			return false, isRetriableTransportErr(err), err
+		}
+		if resp.StatusCode() == http.StatusOK {
+			return true, false, nil
+		}
+		if isRetriableHTTPStatus(resp.StatusCode()) {
+			return false, true, fmt.Errorf("unexpected status %s", resp.Status())
+		}
+		return false, false, fmt.Errorf("unexpected status %s", resp.Status())
+	})
 }
 
 func gzipBytes(src []byte) ([]byte, error) {
