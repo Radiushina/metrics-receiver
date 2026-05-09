@@ -56,7 +56,7 @@ func (r *PostgresRepo) GetCounter(ctx context.Context, name string) (int64, bool
 	var v int64
 	err := r.pool.QueryRow(ctx, `SELECT value FROM counters WHERE name = $1`, name).Scan(&v)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return 0, false
 		}
 		return 0, false

@@ -20,50 +20,37 @@ func reportOnce(
 	delta int64,
 ) error {
 	logg.Sugar().Infof(
-		"report: sending %d gauges + RandomValue + PollCount(+%d)…",
+		"report: sending %d gauges + RandomValue + PollCount(+%d) as batch…",
 		len(models.GaugeNames),
 		delta,
 	)
 
+	metrics := make([]models.Metrics, 0, len(models.GaugeNames)+2)
+
 	for _, name := range models.GaugeNames {
-		if err := agent.PostMetric(
-			client,
-			baseURL,
-			name,
-			models.Gauge,
-			snapshot[name],
-		); err != nil {
-			logg.Sugar().Warnf(
-				"failed to send gauge %s=%v: %v",
-				name,
-				snapshot[name],
-				err,
-			)
-		}
+		v := snapshot[name]
+		metrics = append(metrics, models.Metrics{
+			ID:    name,
+			MType: models.Gauge,
+			Value: &v,
+		})
 	}
 
-	if err := agent.PostMetric(
-		client,
-		baseURL,
-		"RandomValue",
-		models.Gauge,
-		snapshot["RandomValue"],
-	); err != nil {
-		logg.Sugar().Warnf(
-			"failed to send gauge RandomValue=%v: %v",
-			snapshot["RandomValue"],
-			err,
-		)
-	}
+	rv := snapshot["RandomValue"]
+	metrics = append(metrics, models.Metrics{
+		ID:    "RandomValue",
+		MType: models.Gauge,
+		Value: &rv,
+	})
 
-	if err := agent.PostIntMetric(
-		client,
-		baseURL,
-		models.PollCount,
-		models.Counter,
-		delta,
-	); err != nil {
-		logg.Sugar().Warnf("failed to send counter PollCount+=%d: %v", delta, err)
+	metrics = append(metrics, models.Metrics{
+		ID:    models.PollCount,
+		MType: models.Counter,
+		Delta: &delta,
+	})
+
+	if err := agent.PostMetricsBatch(client, baseURL, metrics); err != nil {
+		logg.Sugar().Warnf("failed to send batch metrics: %v", err)
 		return err
 	}
 	return nil

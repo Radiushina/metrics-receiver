@@ -319,7 +319,10 @@ func unmarshalMetric(b []byte) (models.Metrics, error) {
 func unmarshalMetrics(b []byte) ([]models.Metrics, error) {
 	var m []models.Metrics
 	if err := json.Unmarshal(b, &m); err != nil {
-		return []models.Metrics{}, errors.New("invalid JSON")
+		return nil, errors.New("invalid JSON")
+	}
+	for i := range m {
+		m[i].MType = models.MetricType(strings.ToLower(string(m[i].MType)))
 	}
 	return m, nil
 }
