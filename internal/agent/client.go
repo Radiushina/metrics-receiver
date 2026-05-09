@@ -9,12 +9,13 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"strings"
 
 	models "github.com/Radiushina/metrics-receiver.git/internal/model"
 	"github.com/go-resty/resty/v2"
 )
 
-// PostMetric sends a gauge metric value to the server.
+// PostMetric отправляет на сервер значение метрики типа gauge.
 func PostMetric(
 	client *resty.Client,
 	baseURL, name string,
@@ -27,7 +28,7 @@ func PostMetric(
 	return basePostMetric(client, baseURL, name, metricType, &value, nil)
 }
 
-// PostIntMetric sends a counter metric delta to the server.
+// PostIntMetric отправляет на сервер приращение (delta) метрики типа counter.
 func PostIntMetric(
 	client *resty.Client,
 	baseURL, name string,
@@ -35,6 +36,48 @@ func PostIntMetric(
 	delta int64,
 ) error {
 	return basePostMetric(client, baseURL, name, metricType, nil, &delta)
+}
+
+// PostMetricsBatch отправляет пакет метрик на сервер одним запросом.
+// Тело запроса — JSON-массив models.Metrics, сжатый gzip, отправляется методом POST на /updates/.
+func PostMetricsBatch(
+	client *resty.Client,
+	baseURL string,
+	metrics []models.Metrics,
+) error {
+	if len(metrics) == 0 {
+		return nil
+	}
+	for _, m := range metrics {
+		switch m.MType {
+		case models.Gauge:
+			if m.Value == nil || m.Delta != nil {
+				return errors.New("gauge metric requires value, delta must be omitted")
+			}
+			if math.IsNaN(*m.Value) || math.IsInf(*m.Value, 0) {
+				return fmt.Errorf("invalid float value: %v", *m.Value)
+			}
+		case models.Counter:
+			if m.Delta == nil || m.Value != nil {
+				return errors.New("counter metric requires delta, value must be omitted")
+			}
+		default:
+			return fmt.Errorf("unsupported metric type: %q", m.MType)
+		}
+		if strings.TrimSpace(m.ID) == "" {
+			return errors.New("missing metric id")
+		}
+	}
+
+	body, err := json.Marshal(metrics)
+	if err != nil {
+		return err
+	}
+	gzBody, err := gzipBytes(body)
+	if err != nil {
+		return err
+	}
+	return postGzippedMetricsBatch(client, baseURL, gzBody)
 }
 
 func basePostMetric(
@@ -94,6 +137,24 @@ func postGzippedMetric(client *resty.Client, baseURL string, gzBody []byte) erro
 	if err != nil {
 		return err
 	}
+
+	resp, err := client.R().
+		SetHeader("Content-Type", "application/json").
+		SetHeader("Content-Encoding", "gzip").
+		SetHeader("Accept-Encoding", "gzip").
+		SetBody(gzBody).
+		Post(fullURL)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode() != http.StatusOK {
+		return fmt.Errorf("unexpected status %s", resp.Status())
+	}
+	return nil
+}
+
+func postGzippedMetricsBatch(client *resty.Client, baseURL string, gzBody []byte) error {
+	fullURL := strings.TrimRight(baseURL, "/") + "/updates/"
 
 	resp, err := client.R().
 		SetHeader("Content-Type", "application/json").
