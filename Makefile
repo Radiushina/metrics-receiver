@@ -1,6 +1,6 @@
 BINARY = metrics-server
 
-.PHONY: run lint run-server run-agent run-all build build-server build-agent migrate-postgres test-iter1 test-iter2 test-iter3 test-iter7 test-iter8 test-iter9 test-iter11 test-iter12 unit
+.PHONY: run lint run-server run-agent run-all build build-server build-agent migrate-postgres test-iter1 test-iter2 test-iter3 test-iter7 test-iter8 test-iter9 test-iter11 test-iter12 test-iter13 unit
 
 lint:
 	golangci-lint run --config .golangci.yml
@@ -91,13 +91,25 @@ test-iter11: build-server build-agent
 		-source-path=.
 
 # Нужен доступный PostgreSQL.
-# Порт: ITER12_SERVER_PORT (по умолчанию 8080). DSN: ITER12_DATABASE_DSN.
 test-iter12: build-server build-agent
 	@cd "$(CURDIR)" && \
 	SERVER_PORT="$${ITER12_SERVER_PORT:-8086}" && \
 	export SERVER_PORT ADDRESS="localhost:$$SERVER_PORT" && \
 	DSN="$${ITER12_DATABASE_DSN:-postgres://developer@localhost:5432/metrics?sslmode=disable}" && \
 	./metricstest -test.v -test.run='^TestIteration12$$' \
+		-agent-binary-path="$(CURDIR)/cmd/agent/agent" \
+		-binary-path="$(CURDIR)/cmd/server/server" \
+		-database-dsn="$$DSN" \
+		-server-port="$$SERVER_PORT" \
+		-source-path="$(CURDIR)"
+
+# Нужен доступный PostgreSQL.
+test-iter13: build-server build-agent
+	@cd "$(CURDIR)" && \
+	SERVER_PORT="$${ITER13_SERVER_PORT:-8086}" && \
+	export SERVER_PORT ADDRESS="localhost:$$SERVER_PORT" && \
+	DSN="$${ITER13_DATABASE_DSN:-postgres://developer@localhost:5432/metrics?sslmode=disable}" && \
+	./metricstest -test.v -test.run='^TestIteration13$$' \
 		-agent-binary-path="$(CURDIR)/cmd/agent/agent" \
 		-binary-path="$(CURDIR)/cmd/server/server" \
 		-database-dsn="$$DSN" \
