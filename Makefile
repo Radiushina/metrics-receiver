@@ -1,6 +1,6 @@
 BINARY = metrics-server
 
-.PHONY: run lint run-server run-agent run-all build build-server build-agent migrate-postgres test-iter1 test-iter2 test-iter3 test-iter7 test-iter8 test-iter9 test-iter11 test-iter12 test-iter13 unit
+.PHONY: run lint run-server run-agent run-all build build-server build-agent migrate-postgres test-iter1 test-iter2 test-iter3 test-iter7 test-iter8 test-iter9 test-iter11 test-iter12 test-iter13 test-iter14 unit
 
 lint:
 	golangci-lint run --config .golangci.yml
@@ -116,6 +116,19 @@ test-iter13: build-server build-agent
 		-server-port="$$SERVER_PORT" \
 		-source-path="$(CURDIR)"
 
+test-iter14: build-server build-agent
+	@cd "$(CURDIR)" && \
+	SERVER_PORT="$${ITER14_SERVER_PORT:-8086}" && \
+	export SERVER_PORT ADDRESS="localhost:$$SERVER_PORT" && \
+	DSN="$${ITER14_DATABASE_DSN:-postgres://developer@localhost:5432/metrics?sslmode=disable}" && \
+	KEY_FILE="$${ITER14_KEY_FILE:-$$(mktemp)}" && \
+	./metricstest -test.v -test.run='^TestIteration14$$' \
+		-agent-binary-path="$(CURDIR)/cmd/agent/agent" \
+		-binary-path="$(CURDIR)/cmd/server/server" \
+		-database-dsn="$$DSN" \
+		-key="$$KEY_FILE" \
+		-server-port="$$SERVER_PORT" \
+		-source-path="$(CURDIR)"
 
 unit:
 	go test ./...
