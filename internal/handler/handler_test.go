@@ -1,7 +1,12 @@
 package handler_test
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -121,14 +126,18 @@ func (m *mockDBChecker) Ping(ctx context.Context) error {
 }
 
 func newPingMux(db handler.DBChecker) http.Handler {
-	h := handler.NewHandler(newMockService(), nil, zap.NewNop(), db)
+	h := handler.NewHandler(newMockService(), nil, zap.NewNop(), db, "")
 	r := chi.NewRouter()
 	r.Get("/ping", h.PingDB())
 	return r
 }
 
 func newTestMux(svc handler.ServiceProvider) http.Handler {
-	h := handler.NewHandler(svc, nil, zap.NewNop(), nil)
+	return newTestMuxWithKey(svc, "")
+}
+
+func newTestMuxWithKey(svc handler.ServiceProvider, secretKey string) http.Handler {
+	h := handler.NewHandler(svc, nil, zap.NewNop(), nil, secretKey)
 	r := chi.NewRouter()
 	r.Get("/", h.GetMetrics())
 	r.Post("/update/{mtype}/{metric}/{value}", h.UpdateFromPath())
@@ -293,6 +302,159 @@ func TestHandler_PostUpdatesBatch_InvalidMetric_BadRequest(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d, body %q", rec.Code, rec.Body.String())
+	}
+}
+
+func pathRequestHashSHA256B64(key, path string) string {
+	mac := hmac.New(sha256.New, []byte(key))
+	_, _ = mac.Write([]byte(path))
+	return base64.StdEncoding.EncodeToString(mac.Sum(nil))
+}
+
+func bodyHashSHA256B64(key string, body []byte) string {
+	mac := hmac.New(sha256.New, []byte(key))
+	_, _ = mac.Write(body)
+	return base64.StdEncoding.EncodeToString(mac.Sum(nil))
+}
+
+func gzipBody(t *testing.T, plain []byte) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if _, err := zw.Write(plain); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func TestHandler_UpdateFromBody_WithKey_hmacPlainJSON_OK(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	const secret = "secret-plain"
+	mux := newTestMuxWithKey(newMockService(), secret)
+	raw := []byte(`{"id":"HeapAlloc","type":"gauge","value":2}`)
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/update", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("HashSHA256", bodyHashSHA256B64(secret, raw))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d body %q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandler_UpdateFromBody_WithKey_hmacOverGzipBytes_OK(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	const secret = "secret-gzip"
+	mux := newTestMuxWithKey(newMockService(), secret)
+	raw := []byte(`{"id":"HeapAlloc","type":"gauge","value":2}`)
+	gz := gzipBody(t, raw)
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/update", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("HashSHA256", bodyHashSHA256B64(secret, gz))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d body %q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandler_UpdateFromPath_WithKey_NoRequestHash_Allowed_OK(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	const secret = "test-secret-key"
+	mux := newTestMuxWithKey(newMockService(), secret)
+	path := "/update/gauge/HeapAlloc/42.5"
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, path, nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d, body %q", rec.Code, rec.Body.String())
+	}
+	wantHdr := bodyHashSHA256B64(secret, nil)
+	if got := rec.Header().Get("HashSHA256"); got != wantHdr {
+		t.Fatalf("HashSHA256 response header: got %q want %q", got, wantHdr)
+	}
+}
+
+func TestHandler_UpdateFromBody_WithKey_NoRequestHash_Allowed_OK(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	const secret = "no-req-hash"
+	mux := newTestMuxWithKey(newMockService(), secret)
+	raw := []byte(`{"id":"HeapAlloc","type":"gauge","value":2}`)
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/update", bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d, body %q", rec.Code, rec.Body.String())
+	}
+	respBody := rec.Body.Bytes()
+	wantHdr := bodyHashSHA256B64(secret, respBody)
+	if got := rec.Header().Get("HashSHA256"); got != wantHdr {
+		t.Fatalf("HashSHA256 response header: got %q want %q", got, wantHdr)
+	}
+}
+
+func TestHandler_UpdateFromPath_WithKey_WrongHash_BadRequest(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	const secret = "test-secret-key"
+	mux := newTestMuxWithKey(newMockService(), secret)
+	path := "/update/gauge/HeapAlloc/42.5"
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, path, nil)
+	req.Header.Set("HashSHA256", "AAAA")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d, body %q", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.Bytes()
+	wantHdr := bodyHashSHA256B64(secret, body)
+	if got := rec.Header().Get("HashSHA256"); got != wantHdr {
+		t.Fatalf("HashSHA256 header: got %q want %q", got, wantHdr)
+	}
+}
+
+func TestHandler_UpdateFromPath_WithKey_OK_ResponseHash(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	const secret = "test-secret-key"
+	mux := newTestMuxWithKey(newMockService(), secret)
+	path := "/update/gauge/HeapAlloc/42.5"
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, path, nil)
+	req.Header.Set("HashSHA256", pathRequestHashSHA256B64(secret, path))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d, body %q", rec.Code, rec.Body.String())
+	}
+	wantHdr := bodyHashSHA256B64(secret, nil)
+	if got := rec.Header().Get("HashSHA256"); got != wantHdr {
+		t.Fatalf("HashSHA256 header: got %q want %q", got, wantHdr)
 	}
 }
 

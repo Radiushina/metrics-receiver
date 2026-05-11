@@ -26,7 +26,7 @@ func TestNewMux_PostGauge_OK(t *testing.T) {
 
 	repo := repository.NewMemoryRepo()
 	svc := service.NewService(repo)
-	h := handler.NewHandler(svc, nil, zap.NewNop(), nil)
+	h := handler.NewHandler(svc, nil, zap.NewNop(), nil, "")
 	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
 	t.Cleanup(ts.Close)
 
@@ -55,7 +55,7 @@ func TestNewMux_PostCounter_OK(t *testing.T) {
 
 	repo := repository.NewMemoryRepo()
 	svc := service.NewService(repo)
-	h := handler.NewHandler(svc, nil, zap.NewNop(), nil)
+	h := handler.NewHandler(svc, nil, zap.NewNop(), nil, "")
 	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
 	t.Cleanup(ts.Close)
 
@@ -84,7 +84,7 @@ func TestNewMux_InvalidType_BadRequest(t *testing.T) {
 
 	repo := repository.NewMemoryRepo()
 	svc := service.NewService(repo)
-	h := handler.NewHandler(svc, nil, zap.NewNop(), nil)
+	h := handler.NewHandler(svc, nil, zap.NewNop(), nil, "")
 	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
 	t.Cleanup(ts.Close)
 
@@ -113,7 +113,7 @@ func TestNewMux_JSONEndpoints_TrailingSlash_OK(t *testing.T) {
 
 	repo := repository.NewMemoryRepo()
 	svc := service.NewService(repo)
-	h := handler.NewHandler(svc, nil, zap.NewNop(), nil)
+	h := handler.NewHandler(svc, nil, zap.NewNop(), nil, "")
 	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
 	t.Cleanup(ts.Close)
 
@@ -159,7 +159,7 @@ func TestNewMux_GzipRequestBody_OK(t *testing.T) {
 
 	repo := repository.NewMemoryRepo()
 	svc := service.NewService(repo)
-	h := handler.NewHandler(svc, nil, zap.NewNop(), nil)
+	h := handler.NewHandler(svc, nil, zap.NewNop(), nil, "")
 	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
 	t.Cleanup(ts.Close)
 
@@ -198,7 +198,7 @@ func TestNewMux_GzipResponse_JSON_WhenAccepted(t *testing.T) {
 
 	repo := repository.NewMemoryRepo()
 	svc := service.NewService(repo)
-	h := handler.NewHandler(svc, nil, zap.NewNop(), nil)
+	h := handler.NewHandler(svc, nil, zap.NewNop(), nil, "")
 	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
 	t.Cleanup(ts.Close)
 
@@ -260,7 +260,7 @@ func TestNewMux_GzipResponse_HTML_WhenAccepted(t *testing.T) {
 
 	repo := repository.NewMemoryRepo()
 	svc := service.NewService(repo)
-	h := handler.NewHandler(svc, nil, zap.NewNop(), nil)
+	h := handler.NewHandler(svc, nil, zap.NewNop(), nil, "")
 	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
 	t.Cleanup(ts.Close)
 
@@ -304,7 +304,7 @@ func TestNewMux_DoesNotGzipTextPlain(t *testing.T) {
 	repo := repository.NewMemoryRepo()
 	svc := service.NewService(repo)
 	_ = svc.SetGauge(ctx, "HeapAlloc", 42.5)
-	h := handler.NewHandler(svc, nil, zap.NewNop(), nil)
+	h := handler.NewHandler(svc, nil, zap.NewNop(), nil, "")
 	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
 	t.Cleanup(ts.Close)
 

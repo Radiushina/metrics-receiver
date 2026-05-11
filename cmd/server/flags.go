@@ -17,6 +17,7 @@ const (
 	defaultStoreIntervalSec = 300
 	defaultFileStoragePath  = "./metrics-db.json"
 	defaultDatabaseDSN      = ""
+	defaultSecretKey        = ""
 )
 
 var (
@@ -26,6 +27,7 @@ var (
 	flagFileStoragePath  string
 	flagRestore          bool
 	flagDatabaseDSN      string
+	flagSecretKey        string
 )
 
 func parseFlags() (exitCode int, err error) {
@@ -59,6 +61,7 @@ func registerFlags(fs *flag.FlagSet) {
 	fs.StringVar(&flagFileStoragePath, "f", defaultFileStoragePath, "file path to persist metrics")
 	fs.BoolVar(&flagRestore, "r", false, "restore persisted metrics on startup")
 	fs.StringVar(&flagDatabaseDSN, "d", defaultDatabaseDSN, "database dsn")
+	fs.StringVar(&flagSecretKey, "k", defaultSecretKey, "shared secret for HMAC-SHA256 (HashSHA256 header); empty disables signing")
 }
 
 func parseCLI(fs *flag.FlagSet) (exitCode int, err error) {
@@ -87,6 +90,9 @@ func applyEnvConfig(envCfg config.ServiceConfig) {
 	if envCfg.DbDsn != nil {
 		flagDatabaseDSN = *envCfg.DbDsn
 	}
+	if envCfg.KEY != nil {
+		flagSecretKey = *envCfg.KEY
+	}
 }
 
 func applyEnvLogLevel() {
@@ -99,6 +105,7 @@ func normalize() {
 	flagRunAddr = strings.TrimSpace(flagRunAddr)
 	flagFileStoragePath = strings.TrimSpace(flagFileStoragePath)
 	flagDatabaseDSN = strings.TrimSpace(flagDatabaseDSN)
+	flagSecretKey = strings.TrimSpace(flagSecretKey)
 }
 
 func validate() error {

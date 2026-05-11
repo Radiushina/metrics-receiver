@@ -58,10 +58,11 @@ var metricsIndexTmpl = template.Must(template.New("metricsIndex").
 type (
 	// Handler связывает HTTP-обработчики со слоем сервиса.
 	Handler struct {
-		service ServiceProvider
-		saver   Saver
-		log     *zap.Logger
-		db      DBChecker
+		service   ServiceProvider
+		saver     Saver
+		log       *zap.Logger
+		db        DBChecker
+		secretKey string
 	}
 
 	// ServiceProvider описывает операции сервиса, которые нужны Handler.
@@ -88,13 +89,14 @@ type (
 
 // NewHandler создаёт Handler с указанным сервисом, опциональным Saver, логгером
 // и опциональной проверкой БД (db может быть nil, если DSN не задан).
-func NewHandler(service ServiceProvider, saver Saver, log *zap.Logger, db DBChecker) *Handler {
+func NewHandler(service ServiceProvider, saver Saver, log *zap.Logger, db DBChecker, secretKey string) *Handler {
 	log = logger.OrNop(log)
 	return &Handler{
-		service: service,
-		saver:   saver,
-		log:     log,
-		db:      db,
+		service:   service,
+		saver:     saver,
+		log:       log,
+		db:        db,
+		secretKey: secretKey,
 	}
 }
 
@@ -142,7 +144,7 @@ func (h *Handler) GetMetricValue() http.HandlerFunc {
 // по параметрам пути URL.
 func (h *Handler) UpdateFromPath() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		updateMetricsFromPath(w, r, h.service, h.saver, h.log)
+		updateMetricsFromPath(w, r, h.service, h.saver, h.log, h.secretKey)
 	}
 }
 
@@ -150,13 +152,13 @@ func (h *Handler) UpdateFromPath() http.HandlerFunc {
 // из JSON-тела запроса.
 func (h *Handler) UpdateFromBody() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		updateMetricsFromBody(w, r, h.service, h.saver, h.log)
+		updateMetricsFromBody(w, r, h.service, h.saver, h.log, h.secretKey)
 	}
 }
 
 func (h *Handler) UpdateMetrics() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		updateMetricsBatch(w, r, h.service, h.saver, h.log)
+		updateMetricsBatch(w, r, h.service, h.saver, h.log, h.secretKey)
 	}
 }
 
@@ -166,7 +168,13 @@ func updateMetricsFromPath(
 	service ServiceProvider,
 	saver Saver,
 	log *zap.Logger,
+	secretKey string,
 ) {
+	if err := verifyPathUpdateRequestHash(r, secretKey); err != nil {
+		writeProtectedPlainError(w, secretKey, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	mtype := models.MetricType(strings.ToLower(chi.URLParam(r, "mtype")))
 	metric := chi.URLParam(r, "metric")
 	valueStr := chi.URLParam(r, "value")
@@ -177,12 +185,12 @@ func updateMetricsFromPath(
 	}
 
 	if valueStr == "" {
-		http.Error(w, "missing metric value", http.StatusBadRequest)
+		writeProtectedPlainError(w, secretKey, http.StatusBadRequest, "missing metric value")
 		return
 	}
 
 	if mtype == "" {
-		http.Error(w, "missing metric type", http.StatusBadRequest)
+		writeProtectedPlainError(w, secretKey, http.StatusBadRequest, "missing metric type")
 		return
 	}
 
@@ -190,40 +198,40 @@ func updateMetricsFromPath(
 	case models.Gauge:
 		v, err := strconv.ParseFloat(valueStr, 64)
 		if err != nil {
-			http.Error(w, "invalid gauge value", http.StatusBadRequest)
+			writeProtectedPlainError(w, secretKey, http.StatusBadRequest, "invalid gauge value")
 			return
 		}
 		if err := service.SetGauge(r.Context(), metric, v); err != nil {
 			log.Error("set gauge", zap.Error(err))
-			http.Error(w, "internal server error", http.StatusInternalServerError)
+			writeProtectedPlainError(w, secretKey, http.StatusInternalServerError, "internal server error")
 			return
 		}
 		log.Sugar().Infof("server: gauge %s = %g", metric, v)
 	case models.Counter:
 		v, err := strconv.ParseInt(valueStr, 10, 64)
 		if err != nil {
-			http.Error(w, "invalid counter value", http.StatusBadRequest)
+			writeProtectedPlainError(w, secretKey, http.StatusBadRequest, "invalid counter value")
 			return
 		}
 		if err := service.AddCounter(r.Context(), metric, v); err != nil {
 			log.Error("add counter", zap.Error(err))
-			http.Error(w, "internal server error", http.StatusInternalServerError)
+			writeProtectedPlainError(w, secretKey, http.StatusInternalServerError, "internal server error")
 			return
 		}
 		log.Sugar().Infof("server: counter %s += %d", metric, v)
 	default:
-		http.Error(w, fmt.Sprintf("invalid metric type: %q", mtype), http.StatusBadRequest)
+		writeProtectedPlainError(w, secretKey, http.StatusBadRequest, fmt.Sprintf("invalid metric type: %q", mtype))
 		return
 	}
 
 	if saver != nil {
 		if err := saver.Save(r.Context()); err != nil {
-			http.Error(w, "failed to persist metrics", http.StatusInternalServerError)
+			writeProtectedPlainError(w, secretKey, http.StatusInternalServerError, "failed to persist metrics")
 			return
 		}
 	}
 
-	w.WriteHeader(http.StatusOK)
+	writeProtectedEmptyOK(w, secretKey)
 }
 
 func updateMetricsFromBody(
@@ -232,34 +240,39 @@ func updateMetricsFromBody(
 	service ServiceProvider,
 	saver Saver,
 	log *zap.Logger,
+	secretKey string,
 ) {
 	defer func() { _ = r.Body.Close() }()
 
 	reqBody, err := readRequestBody(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeProtectedPlainError(w, secretKey, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := verifyRequestBodyHashSHA256(secretKey, r, reqBody); err != nil {
+		writeProtectedPlainError(w, secretKey, http.StatusBadRequest, err.Error())
 		return
 	}
 	logRequestBody(log, "metrics update request body", reqBody)
 
 	in, err := unmarshalMetric(reqBody)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeProtectedPlainError(w, secretKey, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	out, status, err := applyMetricUpdate(r.Context(), log, service, in)
 	if err != nil {
-		http.Error(w, err.Error(), status)
+		writeProtectedPlainError(w, secretKey, status, err.Error())
 		return
 	}
 
 	if err := persistIfEnabled(r.Context(), saver); err != nil {
-		http.Error(w, "failed to persist metrics", http.StatusInternalServerError)
+		writeProtectedPlainError(w, secretKey, http.StatusInternalServerError, "failed to persist metrics")
 		return
 	}
 
-	writeJSON(w, out)
+	writeJSON(w, secretKey, out)
 }
 
 func updateMetricsBatch(
@@ -268,39 +281,44 @@ func updateMetricsBatch(
 	service ServiceProvider,
 	saver Saver,
 	log *zap.Logger,
+	secretKey string,
 ) {
 	defer func() { _ = r.Body.Close() }()
 
 	reqBody, err := readRequestBody(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeProtectedPlainError(w, secretKey, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := verifyRequestBodyHashSHA256(secretKey, r, reqBody); err != nil {
+		writeProtectedPlainError(w, secretKey, http.StatusBadRequest, err.Error())
 		return
 	}
 	logRequestBody(log, "metrics update request body", reqBody)
 
 	in, err := unmarshalMetrics(reqBody)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeProtectedPlainError(w, secretKey, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	if err := validateMetricsBatch(in); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeProtectedPlainError(w, secretKey, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	if err := service.UpdateMetricsBatch(r.Context(), in); err != nil {
 		log.Error("update metrics batch", zap.Error(err))
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		writeProtectedPlainError(w, secretKey, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
 	if err := persistIfEnabled(r.Context(), saver); err != nil {
-		http.Error(w, "failed to persist metrics", http.StatusInternalServerError)
+		writeProtectedPlainError(w, secretKey, http.StatusInternalServerError, "failed to persist metrics")
 		return
 	}
 
-	writeJSON(w, in)
+	writeJSON(w, secretKey, in)
 }
 
 func validateMetricsBatch(metrics []models.Metrics) error {
@@ -440,12 +458,13 @@ func persistIfEnabled(ctx context.Context, saver Saver) error {
 	return saver.Save(ctx)
 }
 
-func writeJSON(w http.ResponseWriter, v any) {
+func writeJSON(w http.ResponseWriter, secretKey string, v any) {
 	respBody, err := json.Marshal(v)
 	if err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		writeProtectedPlainError(w, secretKey, http.StatusInternalServerError, "internal server error")
 		return
 	}
+	setResponseHashSHA256(w, secretKey, respBody)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(respBody)

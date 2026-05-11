@@ -103,7 +103,7 @@ func run() error {
 	if dbPool != nil {
 		dbForPing = dbPool
 	}
-	h := handler.NewHandler(svc, saver, logg, dbForPing)
+	h := handler.NewHandler(svc, saver, logg, dbForPing, flagSecretKey)
 
 	logg.Info("starting metrics server on",
 		zap.String("address", flagRunAddr))
