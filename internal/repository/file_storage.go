@@ -143,7 +143,7 @@ func applyMetricsSnapshot(ctx context.Context, repo *MemoryRepo, metrics []model
 			if m.Value == nil {
 				continue
 			}
-			repo.SetGauge(ctx, m.ID, *m.Value)
+			_ = repo.SetGauge(ctx, m.ID, *m.Value)
 		case models.Counter:
 			if m.Delta == nil {
 				continue

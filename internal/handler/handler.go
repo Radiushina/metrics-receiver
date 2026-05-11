@@ -66,8 +66,8 @@ type (
 
 	// ServiceProvider описывает операции сервиса, которые нужны Handler.
 	ServiceProvider interface {
-		SetGauge(ctx context.Context, name string, value float64)
-		AddCounter(ctx context.Context, name string, delta int64)
+		SetGauge(ctx context.Context, name string, value float64) error
+		AddCounter(ctx context.Context, name string, delta int64) error
 		GetGauge(ctx context.Context, name string) (float64, bool)
 		GetCounter(ctx context.Context, name string) (int64, bool)
 		Gauges(ctx context.Context) map[string]float64
@@ -193,7 +193,11 @@ func updateMetricsFromPath(
 			http.Error(w, "invalid gauge value", http.StatusBadRequest)
 			return
 		}
-		service.SetGauge(r.Context(), metric, v)
+		if err := service.SetGauge(r.Context(), metric, v); err != nil {
+			log.Error("set gauge", zap.Error(err))
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
 		log.Sugar().Infof("server: gauge %s = %g", metric, v)
 	case models.Counter:
 		v, err := strconv.ParseInt(valueStr, 10, 64)
@@ -201,7 +205,11 @@ func updateMetricsFromPath(
 			http.Error(w, "invalid counter value", http.StatusBadRequest)
 			return
 		}
-		service.AddCounter(r.Context(), metric, v)
+		if err := service.AddCounter(r.Context(), metric, v); err != nil {
+			log.Error("add counter", zap.Error(err))
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
 		log.Sugar().Infof("server: counter %s += %d", metric, v)
 	default:
 		http.Error(w, fmt.Sprintf("invalid metric type: %q", mtype), http.StatusBadRequest)
@@ -383,7 +391,10 @@ func applyCounterUpdate(
 		return models.Metrics{}, http.StatusBadRequest, errors.New("missing counter delta")
 	}
 
-	service.AddCounter(ctx, in.ID, *in.Delta)
+	if err := service.AddCounter(ctx, in.ID, *in.Delta); err != nil {
+		log.Error("add counter", zap.Error(err))
+		return models.Metrics{}, http.StatusInternalServerError, errors.New("internal server error")
+	}
 	log.Sugar().Infof("server: counter %s += %d", in.ID, *in.Delta)
 
 	total, ok := service.GetCounter(ctx, in.ID)
@@ -408,7 +419,10 @@ func applyGaugeUpdate(
 		return models.Metrics{}, http.StatusBadRequest, errors.New("missing gauge value")
 	}
 
-	service.SetGauge(ctx, in.ID, *in.Value)
+	if err := service.SetGauge(ctx, in.ID, *in.Value); err != nil {
+		log.Error("set gauge", zap.Error(err))
+		return models.Metrics{}, http.StatusInternalServerError, errors.New("internal server error")
+	}
 	log.Sugar().Infof("server: gauge %s = %g", in.ID, *in.Value)
 
 	v := *in.Value

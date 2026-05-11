@@ -23,17 +23,19 @@ func NewMemoryRepo() *MemoryRepo {
 }
 
 // SetGauge записывает значение gauge по имени метрики.
-func (r *MemoryRepo) SetGauge(_ context.Context, name string, value float64) {
+func (r *MemoryRepo) SetGauge(_ context.Context, name string, value float64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.gauges[name] = value
+	return nil
 }
 
 // AddCounter увеличивает счётчик на delta.
-func (r *MemoryRepo) AddCounter(_ context.Context, name string, delta int64) {
+func (r *MemoryRepo) AddCounter(_ context.Context, name string, delta int64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.counters[name] += delta
+	return nil
 }
 
 // SetCounter задаёт абсолютное значение счётчика по имени.

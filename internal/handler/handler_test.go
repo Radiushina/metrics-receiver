@@ -31,16 +31,18 @@ func newMockService() *mockService {
 	}
 }
 
-func (m *mockService) SetGauge(_ context.Context, name string, v float64) {
+func (m *mockService) SetGauge(_ context.Context, name string, v float64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.gauges[name] = v
+	return nil
 }
 
-func (m *mockService) AddCounter(_ context.Context, name string, d int64) {
+func (m *mockService) AddCounter(_ context.Context, name string, d int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.counters[name] += d
+	return nil
 }
 
 func (m *mockService) gauge(name string) float64 {
@@ -372,7 +374,7 @@ func TestHandler_GetValue_Gauge_OK(t *testing.T) {
 	defer cancel()
 
 	svc := newMockService()
-	svc.SetGauge(ctx, "HeapAlloc", 42.5)
+	_ = svc.SetGauge(ctx, "HeapAlloc", 42.5)
 	mux := newTestMux(svc)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/value", strings.NewReader(
@@ -405,7 +407,7 @@ func TestHandler_GetValue_Counter_OK(t *testing.T) {
 	defer cancel()
 
 	svc := newMockService()
-	svc.AddCounter(ctx, models.PollCount, 7)
+	_ = svc.AddCounter(ctx, models.PollCount, 7)
 	mux := newTestMux(svc)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/value", strings.NewReader(
@@ -489,7 +491,7 @@ func TestHandler_GetPath_Gauge_OK(t *testing.T) {
 	defer cancel()
 
 	svc := newMockService()
-	svc.SetGauge(ctx, "HeapAlloc", 42.5)
+	_ = svc.SetGauge(ctx, "HeapAlloc", 42.5)
 	mux := newTestMux(svc)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/value/gauge/HeapAlloc", nil)
@@ -510,7 +512,7 @@ func TestHandler_GetPath_Counter_OK(t *testing.T) {
 	defer cancel()
 
 	svc := newMockService()
-	svc.AddCounter(ctx, models.PollCount, 7)
+	_ = svc.AddCounter(ctx, models.PollCount, 7)
 	mux := newTestMux(svc)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/value/counter/PollCount", nil)
@@ -570,8 +572,8 @@ func TestHandler_GetAll_HTML_ListsMetrics(t *testing.T) {
 	defer cancel()
 
 	svc := newMockService()
-	svc.SetGauge(ctx, "HeapAlloc", 1.25)
-	svc.AddCounter(ctx, models.PollCount, 4)
+	_ = svc.SetGauge(ctx, "HeapAlloc", 1.25)
+	_ = svc.AddCounter(ctx, models.PollCount, 4)
 	mux := newTestMux(svc)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
@@ -596,8 +598,8 @@ func TestHandler_GetAll_HTML_AllCountersListed(t *testing.T) {
 	defer cancel()
 
 	svc := newMockService()
-	svc.AddCounter(ctx, models.PollCount, 1)
-	svc.AddCounter(ctx, "OtherCounter", 2)
+	_ = svc.AddCounter(ctx, models.PollCount, 1)
+	_ = svc.AddCounter(ctx, "OtherCounter", 2)
 	mux := newTestMux(svc)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil)

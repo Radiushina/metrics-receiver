@@ -23,22 +23,22 @@ func NewPostgresRepo(pool *pgxpool.Pool) *PostgresRepo {
 }
 
 // SetGauge записывает или обновляет gauge в таблице gauges.
-func (r *PostgresRepo) SetGauge(ctx context.Context, name string, value float64) {
+func (r *PostgresRepo) SetGauge(ctx context.Context, name string, value float64) error {
 	const q = `
 INSERT INTO gauges (name, value) VALUES ($1, $2)
 ON CONFLICT (name) DO UPDATE SET value = EXCLUDED.value`
-	_ = retryPostgres(ctx, func(ctx context.Context) error {
+	return retryPostgres(ctx, func(ctx context.Context) error {
 		_, err := r.pool.Exec(ctx, q, name, value)
 		return err
 	})
 }
 
 // AddCounter прибавляет delta к счётчику в таблице counters (или создаёт строку).
-func (r *PostgresRepo) AddCounter(ctx context.Context, name string, delta int64) {
+func (r *PostgresRepo) AddCounter(ctx context.Context, name string, delta int64) error {
 	const q = `
 INSERT INTO counters (name, value) VALUES ($1, $2)
 ON CONFLICT (name) DO UPDATE SET value = counters.value + EXCLUDED.value`
-	_ = retryPostgres(ctx, func(ctx context.Context) error {
+	return retryPostgres(ctx, func(ctx context.Context) error {
 		_, err := r.pool.Exec(ctx, q, name, delta)
 		return err
 	})

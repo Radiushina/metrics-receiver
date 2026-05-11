@@ -14,8 +14,8 @@ type (
 
 	// RepositoryProvider describes the repository operations.
 	RepositoryProvider interface {
-		SetGauge(ctx context.Context, name string, value float64)
-		AddCounter(ctx context.Context, name string, delta int64)
+		SetGauge(ctx context.Context, name string, value float64) error
+		AddCounter(ctx context.Context, name string, delta int64) error
 		GetGauge(ctx context.Context, name string) (float64, bool)
 		GetCounter(ctx context.Context, name string) (int64, bool)
 		Gauges(ctx context.Context) map[string]float64
@@ -32,13 +32,13 @@ func NewService(repo RepositoryProvider) Service {
 }
 
 // SetGauge stores a gauge value by name.
-func (s Service) SetGauge(ctx context.Context, name string, value float64) {
-	s.repo.SetGauge(ctx, name, value)
+func (s Service) SetGauge(ctx context.Context, name string, value float64) error {
+	return s.repo.SetGauge(ctx, name, value)
 }
 
 // AddCounter increments a counter by delta.
-func (s Service) AddCounter(ctx context.Context, name string, value int64) {
-	s.repo.AddCounter(ctx, name, value)
+func (s Service) AddCounter(ctx context.Context, name string, value int64) error {
+	return s.repo.AddCounter(ctx, name, value)
 }
 
 // GetGauge returns a gauge value and whether it exists.

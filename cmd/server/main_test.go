@@ -303,7 +303,7 @@ func TestNewMux_DoesNotGzipTextPlain(t *testing.T) {
 
 	repo := repository.NewMemoryRepo()
 	svc := service.NewService(repo)
-	svc.SetGauge(ctx, "HeapAlloc", 42.5)
+	_ = svc.SetGauge(ctx, "HeapAlloc", 42.5)
 	h := handler.NewHandler(svc, nil, zap.NewNop(), nil)
 	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
 	t.Cleanup(ts.Close)

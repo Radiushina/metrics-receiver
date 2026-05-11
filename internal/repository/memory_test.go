@@ -11,8 +11,8 @@ import (
 func TestMemStorage_SetGauge_Replaces(t *testing.T) {
 	ctx := context.Background()
 	s := repository.NewMemoryRepo()
-	s.SetGauge(ctx, "HeapAlloc", 10)
-	s.SetGauge(ctx, "HeapAlloc", 20)
+	_ = s.SetGauge(ctx, "HeapAlloc", 10)
+	_ = s.SetGauge(ctx, "HeapAlloc", 20)
 
 	if got := s.Gauges(ctx)["HeapAlloc"]; got != 20 {
 		t.Fatalf("expected gauge 20, got %v", got)
@@ -22,8 +22,8 @@ func TestMemStorage_SetGauge_Replaces(t *testing.T) {
 func TestMemStorage_AddCounter_Accumulates(t *testing.T) {
 	ctx := context.Background()
 	s := repository.NewMemoryRepo()
-	s.AddCounter(ctx, models.PollCount, 1)
-	s.AddCounter(ctx, models.PollCount, 5)
+	_ = s.AddCounter(ctx, models.PollCount, 1)
+	_ = s.AddCounter(ctx, models.PollCount, 5)
 
 	if got := s.Counters(ctx)[models.PollCount]; got != 6 {
 		t.Fatalf("expected counter 6, got %v", got)
@@ -33,9 +33,9 @@ func TestMemStorage_AddCounter_Accumulates(t *testing.T) {
 func TestMemStorage_SetCounter_Replaces(t *testing.T) {
 	ctx := context.Background()
 	s := repository.NewMemoryRepo()
-	s.AddCounter(ctx, models.PollCount, 1)
+	_ = s.AddCounter(ctx, models.PollCount, 1)
 	s.SetCounter(models.PollCount, 42)
-	s.AddCounter(ctx, models.PollCount, 5)
+	_ = s.AddCounter(ctx, models.PollCount, 5)
 
 	if got := s.Counters(ctx)[models.PollCount]; got != 47 {
 		t.Fatalf("expected counter 47, got %v", got)
@@ -45,8 +45,8 @@ func TestMemStorage_SetCounter_Replaces(t *testing.T) {
 func TestMemStorage_GaugeAndCounter_Independent(t *testing.T) {
 	ctx := context.Background()
 	s := repository.NewMemoryRepo()
-	s.SetGauge(ctx, "x", 1.5)
-	s.AddCounter(ctx, "x", 3)
+	_ = s.SetGauge(ctx, "x", 1.5)
+	_ = s.AddCounter(ctx, "x", 3)
 
 	if got := s.Gauges(ctx)["x"]; got != 1.5 {
 		t.Fatalf("gauge: %v", got)
@@ -60,8 +60,8 @@ func TestMemStorage_UpdateMetricsBatch_AppliesAll(t *testing.T) {
 	ctx := context.Background()
 	s := repository.NewMemoryRepo()
 
-	s.SetGauge(ctx, "RandomValue", 1.0)
-	s.AddCounter(ctx, models.PollCount, 10)
+	_ = s.SetGauge(ctx, "RandomValue", 1.0)
+	_ = s.AddCounter(ctx, models.PollCount, 10)
 
 	g1 := 3.14159
 	g2 := 1547.0
