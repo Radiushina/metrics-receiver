@@ -276,8 +276,14 @@ func updateMetricsBatch(
 		return
 	}
 
-	if err := service.UpdateMetricsBatch(r.Context(), in); err != nil {
+	if err := validateMetricsBatch(in); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := service.UpdateMetricsBatch(r.Context(), in); err != nil {
+		log.Error("update metrics batch", zap.Error(err))
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -287,6 +293,30 @@ func updateMetricsBatch(
 	}
 
 	writeJSON(w, in)
+}
+
+func validateMetricsBatch(metrics []models.Metrics) error {
+	for _, m := range metrics {
+		if strings.TrimSpace(m.ID) == "" {
+			return errors.New("missing metric id")
+		}
+		if m.MType == "" {
+			return errors.New("missing metric type")
+		}
+		switch m.MType {
+		case models.Gauge:
+			if m.Value == nil || m.Delta != nil {
+				return errors.New("gauge metric requires value, delta must be omitted")
+			}
+		case models.Counter:
+			if m.Delta == nil || m.Value != nil {
+				return errors.New("counter metric requires delta, value must be omitted")
+			}
+		default:
+			return fmt.Errorf("invalid metric type: %q", m.MType)
+		}
+	}
+	return nil
 }
 
 func readRequestBody(r *http.Request) ([]byte, error) {

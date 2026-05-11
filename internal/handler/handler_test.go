@@ -139,6 +139,15 @@ func newTestMux(svc handler.ServiceProvider) http.Handler {
 	return r
 }
 
+type errService struct {
+	handler.ServiceProvider
+	err error
+}
+
+func (e errService) UpdateMetricsBatch(ctx context.Context, metrics []models.Metrics) error {
+	return e.err
+}
+
 func TestHandler_PostGauge_OK(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -236,6 +245,52 @@ func TestHandler_PostUpdatesBatch_OK(t *testing.T) {
 	}
 	if svc.gauge("ActiveUsers") != 1547 {
 		t.Fatalf("stored gauge ActiveUsers: %v", svc.gauge("ActiveUsers"))
+	}
+}
+
+func TestHandler_PostUpdatesBatch_ServiceError_InternalServerError(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	svc := errService{ServiceProvider: newMockService(), err: errors.New("db is down")}
+	mux := newTestMux(svc)
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/updates/", strings.NewReader(
+		`[
+  {"id":"PollCount","type":"counter","delta":42},
+  {"id":"RandomValue","type":"gauge","value":3.14159}
+]`,
+	))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d, body %q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandler_PostUpdatesBatch_InvalidMetric_BadRequest(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	svc := newMockService()
+	mux := newTestMux(svc)
+
+	// gauge без value — это ошибка валидации запроса => 400
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/updates/", strings.NewReader(
+		`[
+  {"id":"RandomValue","type":"gauge"}
+]`,
+	))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d, body %q", rec.Code, rec.Body.String())
 	}
 }
 
