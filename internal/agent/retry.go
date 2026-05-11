@@ -68,7 +68,7 @@ func isRetriableTransportErr(err error) bool {
 
 func isRetriableHTTPStatus(code int) bool {
 	switch code {
-	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+	case http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 		return true
 	default:
 		return false
