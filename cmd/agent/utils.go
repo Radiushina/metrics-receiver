@@ -15,7 +15,7 @@ import (
 func reportOnce(
 	logg *zap.Logger,
 	client *resty.Client,
-	baseURL string,
+	secretKey, baseURL string,
 	snapshot map[string]float64,
 	delta int64,
 ) error {
@@ -49,7 +49,7 @@ func reportOnce(
 		Delta: &delta,
 	})
 
-	if err := agent.PostMetricsBatch(client, baseURL, metrics); err != nil {
+	if err := agent.PostMetricsBatch(client, secretKey, baseURL, metrics); err != nil {
 		logg.Sugar().Warnf("failed to send batch metrics: %v", err)
 		return err
 	}

@@ -15,6 +15,7 @@ type Flags struct {
 	runAddr        string
 	pollInterval   int64
 	reportInterval int64
+	key            string
 }
 
 func NewFlags() *Flags {
@@ -22,6 +23,7 @@ func NewFlags() *Flags {
 		runAddr:        "localhost:8080",
 		pollInterval:   2,
 		reportInterval: 10,
+		key:            "",
 	}
 }
 
@@ -34,6 +36,7 @@ func (r *Flags) parse() (exitCode int, err error) {
 	fs.StringVar(&r.runAddr, "a", r.runAddr, "HTTP server host:port (scheme http:// added automatically)")
 	fs.Int64Var(&r.pollInterval, "p", r.pollInterval, "poll interval: how often to read runtime.MemStats (seconds)")
 	fs.Int64Var(&r.reportInterval, "r", r.reportInterval, "report interval: how often to send metrics to the server (seconds)")
+	fs.StringVar(&r.key, "k", r.key, "shared secret for HMAC-SHA256 request body signature (HashSHA256 header); empty disables signing")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -54,6 +57,9 @@ func (r *Flags) parse() (exitCode int, err error) {
 	}
 	if envCfg.ReportIntervalSec != nil {
 		r.reportInterval = *envCfg.ReportIntervalSec
+	}
+	if envCfg.KEY != nil {
+		r.key = strings.TrimSpace(*envCfg.KEY)
 	}
 
 	return 0, nil

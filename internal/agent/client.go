@@ -3,6 +3,9 @@ package agent
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,31 +21,31 @@ import (
 // PostMetric отправляет на сервер значение метрики типа gauge.
 func PostMetric(
 	client *resty.Client,
-	baseURL, name string,
+	secretKey, baseURL, name string,
 	metricType models.MetricType,
 	value float64,
 ) error {
 	if math.IsNaN(value) || math.IsInf(value, 0) {
 		return fmt.Errorf("invalid float value: %v", value)
 	}
-	return basePostMetric(client, baseURL, name, metricType, &value, nil)
+	return basePostMetric(client, secretKey, baseURL, name, metricType, &value, nil)
 }
 
 // PostIntMetric отправляет на сервер приращение (delta) метрики типа counter.
 func PostIntMetric(
 	client *resty.Client,
-	baseURL, name string,
+	secretKey, baseURL, name string,
 	metricType models.MetricType,
 	delta int64,
 ) error {
-	return basePostMetric(client, baseURL, name, metricType, nil, &delta)
+	return basePostMetric(client, secretKey, baseURL, name, metricType, nil, &delta)
 }
 
 // PostMetricsBatch отправляет пакет метрик на сервер одним запросом.
 // Тело запроса — JSON-массив models.Metrics, сжатый gzip, отправляется методом POST на /updates/.
 func PostMetricsBatch(
 	client *resty.Client,
-	baseURL string,
+	secretKey, baseURL string,
 	metrics []models.Metrics,
 ) error {
 	if len(metrics) == 0 {
@@ -77,12 +80,12 @@ func PostMetricsBatch(
 	if err != nil {
 		return err
 	}
-	return postGzippedMetricsBatch(client, baseURL, gzBody)
+	return postGzippedMetricsBatch(client, secretKey, baseURL, gzBody)
 }
 
 func basePostMetric(
 	client *resty.Client,
-	baseURL, name string,
+	secretKey, baseURL, name string,
 	metricType models.MetricType,
 	value *float64,
 	delta *int64,
@@ -108,17 +111,24 @@ func basePostMetric(
 		return err
 	}
 
-	return postGzippedMetric(client, baseURL, gzBody)
+	return postGzippedMetric(client, secretKey, baseURL, gzBody)
 }
 
-func postGzippedJSON(client *resty.Client, fullURL string, gzBody []byte) error {
+func postGzippedJSON(client *resty.Client, secretKey, fullURL string, gzBody []byte) error {
 	return retryAgent(func() (bool, bool, error) {
-		resp, err := client.R().
+		req := client.R().
 			SetHeader("Content-Type", "application/json").
 			SetHeader("Content-Encoding", "gzip").
 			SetHeader("Accept-Encoding", "gzip").
-			SetBody(gzBody).
-			Post(fullURL)
+			SetBody(gzBody)
+		if key := strings.TrimSpace(secretKey); key != "" {
+			mac := hmac.New(sha256.New, []byte(key))
+			if _, err := mac.Write(gzBody); err != nil {
+				return false, false, err
+			}
+			req.SetHeader("HashSHA256", base64.StdEncoding.EncodeToString(mac.Sum(nil)))
+		}
+		resp, err := req.Post(fullURL)
 		if err != nil {
 			return false, isRetriableTransportErr(err), err
 		}
@@ -151,17 +161,17 @@ func validateMetricArgs(
 	}
 }
 
-func postGzippedMetric(client *resty.Client, baseURL string, gzBody []byte) error {
+func postGzippedMetric(client *resty.Client, secretKey, baseURL string, gzBody []byte) error {
 	fullURL, err := url.JoinPath(baseURL, "update")
 	if err != nil {
 		return err
 	}
-	return postGzippedJSON(client, fullURL, gzBody)
+	return postGzippedJSON(client, secretKey, fullURL, gzBody)
 }
 
-func postGzippedMetricsBatch(client *resty.Client, baseURL string, gzBody []byte) error {
+func postGzippedMetricsBatch(client *resty.Client, secretKey, baseURL string, gzBody []byte) error {
 	fullURL := strings.TrimRight(baseURL, "/") + "/updates/"
-	return postGzippedJSON(client, fullURL, gzBody)
+	return postGzippedJSON(client, secretKey, fullURL, gzBody)
 }
 
 func gzipBytes(src []byte) ([]byte, error) {

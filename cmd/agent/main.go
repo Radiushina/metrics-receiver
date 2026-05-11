@@ -31,6 +31,7 @@ func main() {
 	baseURL := flags.serverBaseURL()
 	pollInterval := flags.pollEvery()
 	reportInterval := flags.reportEvery()
+	secretKey := flags.key
 
 	logg, err := logger.New("info")
 	if err != nil {
@@ -61,12 +62,12 @@ func main() {
 
 	go func() {
 		snapshot, delta := takeReportSnapshot(&mu, gaugeValues, &pollCountDelta)
-		if err := reportOnce(logg, client, baseURL, snapshot, delta); err != nil {
+		if err := reportOnce(logg, client, secretKey, baseURL, snapshot, delta); err != nil {
 			atomic.AddInt64(&pollCountDelta, delta)
 		}
 		for range reportTicker.C {
 			snapshot, delta := takeReportSnapshot(&mu, gaugeValues, &pollCountDelta)
-			if err := reportOnce(logg, client, baseURL, snapshot, delta); err != nil {
+			if err := reportOnce(logg, client, secretKey, baseURL, snapshot, delta); err != nil {
 				atomic.AddInt64(&pollCountDelta, delta)
 			}
 		}

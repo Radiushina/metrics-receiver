@@ -1,40 +1,46 @@
 package config
 
-// AgentConfig holds optional environment overrides for the metrics agent.
-// Pointer fields are nil when the corresponding variable is not set in the
-// environment.
-// Interval env vars are interpreted as whole seconds (integers).
+// AgentConfig — опциональные значения из переменных окружения для агента метрик.
+// Поля-указатели равны nil, если соответствующая переменная не задана.
+// POLL_INTERVAL и REPORT_INTERVAL задаются целым числом секунд.
 type AgentConfig struct {
-	RunAddr           *string `env:"ADDRESS"`
-	PollIntervalSec   *int64  `env:"POLL_INTERVAL"`
-	ReportIntervalSec *int64  `env:"REPORT_INTERVAL"`
+	// ADDRESS — хост:порт HTTP-сервера приёма метрик (без схемы; к адресу добавляется http://).
+	// При наличии в окружении перекрывает значение флага -a.
+	RunAddr *string `env:"ADDRESS"`
+	// POLL_INTERVAL — как часто опрашивать runtime.MemStats и обновлять gauge (секунды).
+	// При наличии в окружении перекрывает значение флага -p.
+	PollIntervalSec *int64 `env:"POLL_INTERVAL"`
+	// REPORT_INTERVAL — как часто отправлять метрики на сервер (секунды).
+	// При наличии в окружении перекрывает значение флага -r.
+	ReportIntervalSec *int64 `env:"REPORT_INTERVAL"`
+	// KEY — секрет для подписи тел (HashSHA256, HMAC-SHA256); если не задан — без подписи.
+	// При наличии в окружении перекрывает значение флага -k.
+	KEY *string `env:"KEY"`
 }
 
 // ServiceConfig содержит опциональные значения из переменных окружения
 // для конфигурации сервера.
 // Поля-указатели равны nil, если соответствующая переменная окружения
 // не задана.
-//
-// ADDRESS — адрес и порт, на которых слушает HTTP-сервер (перекрывает значение
-// по умолчанию и совпадает по смыслу с флагом командной строки -a).
-//
-// DATABASE_DSN — строка подключения к PostgreSQL (DSN); при наличии переменной
-// перекрывает значение флага -d. Формат: postgres://user:pass@host:port/db?sslmode=...
-//
-// STORE_INTERVAL интерпретируется как целое число секунд. Значение 0 включает
-// синхронное сохранение
-// (после каждого обновления метрики); положительное значение включает
-// периодическое сохранение
-// с указанным интервалом.
-//
-// FILE_STORAGE_PATH — путь до файла, используемого для сохранения метрик.
-//
-// RESTORE определяет, нужно ли загружать сохранённые метрики из
-// FILE_STORAGE_PATH при старте.
+
 type ServiceConfig struct {
-	RunAddr         *string `env:"ADDRESS"`
-	DbDsn           *string `env:"DATABASE_DSN"`
-	StoreInterval   *int    `env:"STORE_INTERVAL"`
+	// ADDRESS — адрес и порт, на которых слушает HTTP-сервер (перекрывает значение
+	// по умолчанию и совпадает по смыслу с флагом командной строки -a).
+	RunAddr *string `env:"ADDRESS"`
+	// DATABASE_DSN — строка подключения к PostgreSQL (DSN); при наличии переменной
+	// перекрывает значение флага -d. Формат: postgres://user:pass@host:port/db?sslmode=...
+	DbDsn *string `env:"DATABASE_DSN"`
+	// STORE_INTERVAL интерпретируется как целое число секунд. Значение 0 включает
+	// синхронное сохранение
+	// (после каждого обновления метрики); положительное значение включает
+	// периодическое сохранение
+	// с указанным интервалом.
+	StoreInterval *int `env:"STORE_INTERVAL"`
+	// FILE_STORAGE_PATH — путь до файла, используемого для сохранения метрик.
 	FileStoragePath *string `env:"FILE_STORAGE_PATH"`
-	Restore         *bool   `env:"RESTORE"`
+	// RESTORE определяет, нужно ли загружать сохранённые метрики из
+	// FILE_STORAGE_PATH при старте.
+	Restore *bool `env:"RESTORE"`
+	// KEY — секрет для подписи тел (HashSHA256, HMAC-SHA256); если не задан — без подписи.
+	KEY *string `env:"KEY"`
 }
