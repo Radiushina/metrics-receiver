@@ -8,12 +8,12 @@ import (
 	"os"
 	"runtime"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/Radiushina/metrics-receiver.git/internal/logger"
 	models "github.com/Radiushina/metrics-receiver.git/internal/model"
 	"github.com/go-resty/resty/v2"
+	"github.com/shirou/gopsutil/v4/cpu"
 	"go.uber.org/zap"
 )
 
@@ -32,6 +32,10 @@ func main() {
 	pollInterval := flags.pollEvery()
 	reportInterval := flags.reportEvery()
 	secretKey := flags.key
+	rateLimit := flags.rateLimit
+	if rateLimit < 1 {
+		rateLimit = 1
+	}
 
 	logg, err := logger.New("info")
 	if err != nil {
@@ -42,38 +46,52 @@ func main() {
 	client := resty.New().
 		SetTimeout(5 * time.Second)
 
-	gaugeValues := make(map[string]float64, len(models.GaugeNames)+1)
+	cpuCount, err := cpu.Counts(true)
+	if err != nil {
+		logg.Sugar().Warnf("gopsutil: cpu count: %v, using 1", err)
+		cpuCount = 1
+	}
+	gopsutilGaugeNames := models.GopsutilGaugeNames(cpuCount)
+
+	sender := newMetricSender(int(rateLimit), client, secretKey, baseURL, gopsutilGaugeNames)
+
+	gaugeValues := make(map[string]float64, len(models.GaugeNames)+len(gopsutilGaugeNames)+1)
+	initGopsutilGauges(gaugeValues, gopsutilGaugeNames)
+
 	var ms runtime.MemStats
 	var mu sync.Mutex
 	var pollCountDelta int64
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	pollOnce(logg, &ms, &mu, gaugeValues, rnd, &pollCountDelta)
+	pollGopsutilOnce(logg, &mu, gaugeValues, cpuCount)
 	logg.Sugar().Infof(
-		"poll: initial update done; first metric report in %v",
+		"poll: initial update done; first metric report in %v (rate limit %d, cpus %d)",
 		reportInterval,
+		rateLimit,
+		cpuCount,
 	)
 
-	pollTicker := time.NewTicker(pollInterval)
-	defer pollTicker.Stop()
+	var wg sync.WaitGroup
+	wg.Add(3)
 
-	reportTicker := time.NewTicker(reportInterval)
-	defer reportTicker.Stop()
-
+	// Горутина 1: runtime.MemStats (Alloc, HeapAlloc, …) и RandomValue.
 	go func() {
-		snapshot, delta := takeReportSnapshot(&mu, gaugeValues, &pollCountDelta)
-		if err := reportOnce(logg, client, secretKey, baseURL, snapshot, delta); err != nil {
-			atomic.AddInt64(&pollCountDelta, delta)
-		}
-		for range reportTicker.C {
-			snapshot, delta := takeReportSnapshot(&mu, gaugeValues, &pollCountDelta)
-			if err := reportOnce(logg, client, secretKey, baseURL, snapshot, delta); err != nil {
-				atomic.AddInt64(&pollCountDelta, delta)
-			}
-		}
+		defer wg.Done()
+		runRuntimePollLoop(logg, pollInterval, &ms, &mu, gaugeValues, rnd, &pollCountDelta)
 	}()
 
-	for range pollTicker.C {
-		pollOnce(logg, &ms, &mu, gaugeValues, rnd, &pollCountDelta)
-	}
+	// Горутина 2: отправка метрик на сервер (worker pool, RATE_LIMIT).
+	go func() {
+		defer wg.Done()
+		runReportLoop(logg, reportInterval, &mu, gaugeValues, &pollCountDelta, sender)
+	}()
+
+	// Горутина 3: gopsutil — TotalMemory, FreeMemory, CPUutilization0…N-1.
+	go func() {
+		defer wg.Done()
+		runGopsutilPollLoop(logg, pollInterval, &mu, gaugeValues, cpuCount)
+	}()
+
+	wg.Wait()
 }

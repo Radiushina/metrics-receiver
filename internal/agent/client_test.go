@@ -107,7 +107,7 @@ func TestPostMetric_OK(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	client := resty.New().SetTimeout(5 * time.Second)
-	err := agent.PostMetric(client, "", srv.URL, "foo", models.Gauge, 1.5)
+	err := agent.PostGaugeMetric(client, "", srv.URL, "foo", models.Gauge, 1.5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func TestPostMetricsBatch_Empty_NoRequest(t *testing.T) {
 
 func TestPostMetric_NaN(t *testing.T) {
 	client := resty.New()
-	err := agent.PostMetric(client, "", "http://unused", "x", models.Gauge, math.NaN())
+	err := agent.PostGaugeMetric(client, "", "http://unused", "x", models.Gauge, math.NaN())
 	if err == nil {
 		t.Fatal("expected error for NaN")
 	}
@@ -194,7 +194,7 @@ func TestPostMetric_NonOKStatus(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	client := resty.New().SetTimeout(5 * time.Second)
-	err := agent.PostMetric(client, "", srv.URL, "a", models.Gauge, 1)
+	err := agent.PostGaugeMetric(client, "", srv.URL, "a", models.Gauge, 1)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -226,7 +226,7 @@ func TestPostIntMetric_OK(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	client := resty.New().SetTimeout(5 * time.Second)
-	err := agent.PostIntMetric(client, "", srv.URL, models.PollCount, models.Counter, 7)
+	err := agent.PostCounterMetric(client, "", srv.URL, models.PollCount, models.Counter, 7)
 	if err != nil {
 		t.Fatal(err)
 	}

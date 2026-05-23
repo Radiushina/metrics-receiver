@@ -18,8 +18,8 @@ import (
 	"github.com/go-resty/resty/v2"
 )
 
-// PostMetric отправляет на сервер значение метрики типа gauge.
-func PostMetric(
+// PostGaugeMetric отправляет на сервер значение метрики типа gauge.
+func PostGaugeMetric(
 	client *resty.Client,
 	secretKey, baseURL, name string,
 	metricType models.MetricType,
@@ -31,8 +31,8 @@ func PostMetric(
 	return basePostMetric(client, secretKey, baseURL, name, metricType, &value, nil)
 }
 
-// PostIntMetric отправляет на сервер приращение (delta) метрики типа counter.
-func PostIntMetric(
+// PostCounterMetric отправляет на сервер приращение (delta) метрики типа counter.
+func PostCounterMetric(
 	client *resty.Client,
 	secretKey, baseURL, name string,
 	metricType models.MetricType,

@@ -5,52 +5,26 @@ import (
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"time"
 
-	"github.com/Radiushina/metrics-receiver.git/internal/agent"
 	models "github.com/Radiushina/metrics-receiver.git/internal/model"
-	"github.com/go-resty/resty/v2"
 	"go.uber.org/zap"
 )
 
 func reportOnce(
 	logg *zap.Logger,
-	client *resty.Client,
-	secretKey, baseURL string,
+	sender *metricSender,
 	snapshot map[string]float64,
 	delta int64,
 ) error {
 	logg.Sugar().Infof(
-		"report: sending %d gauges + RandomValue + PollCount(+%d) as batch…",
+		"report: sending %d runtime + gopsutil gauges + RandomValue + PollCount(+%d) via worker pool…",
 		len(models.GaugeNames),
 		delta,
 	)
 
-	metrics := make([]models.Metrics, 0, len(models.GaugeNames)+2)
-
-	for _, name := range models.GaugeNames {
-		v := snapshot[name]
-		metrics = append(metrics, models.Metrics{
-			ID:    name,
-			MType: models.Gauge,
-			Value: &v,
-		})
-	}
-
-	rv := snapshot["RandomValue"]
-	metrics = append(metrics, models.Metrics{
-		ID:    "RandomValue",
-		MType: models.Gauge,
-		Value: &rv,
-	})
-
-	metrics = append(metrics, models.Metrics{
-		ID:    models.PollCount,
-		MType: models.Counter,
-		Delta: &delta,
-	})
-
-	if err := agent.PostMetricsBatch(client, secretKey, baseURL, metrics); err != nil {
-		logg.Sugar().Warnf("failed to send batch metrics: %v", err)
+	if err := sender.sendSnapshot(snapshot, delta); err != nil {
+		logg.Sugar().Warnf("failed to send metrics: %v", err)
 		return err
 	}
 	return nil
@@ -89,4 +63,47 @@ func pollOnce(
 
 	atomic.AddInt64(pollCountDelta, 1)
 	logg.Info("poll: MemStats + RandomValue updated")
+}
+
+// runRuntimePollLoop — первая горутина агента: опрос runtime.MemStats и PollCount.
+func runRuntimePollLoop(
+	logg *zap.Logger,
+	interval time.Duration,
+	ms *runtime.MemStats,
+	mu *sync.Mutex,
+	gaugeValues map[string]float64,
+	rnd *rand.Rand,
+	pollCountDelta *int64,
+) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		pollOnce(logg, ms, mu, gaugeValues, rnd, pollCountDelta)
+	}
+}
+
+// runReportLoop — горутина отправки: снимает метрики и шлёт их на сервер через worker pool.
+func runReportLoop(
+	logg *zap.Logger,
+	interval time.Duration,
+	mu *sync.Mutex,
+	gaugeValues map[string]float64,
+	pollCountDelta *int64,
+	sender *metricSender,
+) {
+	snapshot, delta := takeReportSnapshot(mu, gaugeValues, pollCountDelta)
+	if err := reportOnce(logg, sender, snapshot, delta); err != nil {
+		atomic.AddInt64(pollCountDelta, delta)
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		snapshot, delta := takeReportSnapshot(mu, gaugeValues, pollCountDelta)
+		if err := reportOnce(logg, sender, snapshot, delta); err != nil {
+			atomic.AddInt64(pollCountDelta, delta)
+		}
+	}
 }
