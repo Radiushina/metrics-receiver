@@ -18,7 +18,7 @@ func reportOnce(
 	delta int64,
 ) error {
 	logg.Sugar().Infof(
-		"report: sending %d runtime + gopsutil gauges + RandomValue + PollCount(+%d) via worker pool…",
+		"report: sending batch (%d runtime + gopsutil gauges + RandomValue + PollCount(+%d)) via worker pool…",
 		len(models.GaugeNames),
 		delta,
 	)

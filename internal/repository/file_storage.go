@@ -34,7 +34,7 @@ func NewFileStorage(repo *MemoryRepo, path string) *FileStorage {
 }
 
 // Save persists the current metrics snapshot to disk.
-func (s *FileStorage) Save(_ context.Context) error {
+func (s *FileStorage) Save(ctx context.Context) error {
 	dir := filepath.Dir(s.path)
 	if dir != "." && dir != "" {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -42,7 +42,7 @@ func (s *FileStorage) Save(_ context.Context) error {
 		}
 	}
 
-	metrics := s.snapshot()
+	metrics := s.snapshot(ctx)
 
 	tmpPath := s.path + ".tmp"
 	f, err := os.Create(tmpPath)
@@ -153,9 +153,9 @@ func applyMetricsSnapshot(ctx context.Context, repo *MemoryRepo, metrics []model
 	}
 }
 
-func (s *FileStorage) snapshot() []models.Metrics {
-	gauges := s.repo.Gauges(context.Background())
-	counters := s.repo.Counters(context.Background())
+func (s *FileStorage) snapshot(ctx context.Context) []models.Metrics {
+	gauges := s.repo.Gauges(ctx)
+	counters := s.repo.Counters(ctx)
 
 	out := make([]models.Metrics, 0, len(gauges)+len(counters))
 

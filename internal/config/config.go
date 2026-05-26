@@ -13,11 +13,11 @@ type AgentConfig struct {
 	// REPORT_INTERVAL — как часто отправлять метрики на сервер (секунды).
 	// При наличии в окружении перекрывает значение флага -r.
 	ReportIntervalSec *int64 `env:"REPORT_INTERVAL"`
-	// KEY — секрет для подписи тел (HashSHA256, HMAC-SHA256); если не задан — без подписи.
+	// Key — секрет для подписи тел (HashSHA256, HMAC-SHA256); если не задан — без подписи.
 	// При наличии в окружении перекрывает значение флага -k.
-	KEY *string `env:"KEY"`
-	// RATE_LIMIT - количество одновременно исходящих запросов на сервер
-	RATE_LIMIT *int64 `env:"RATE_LIMIT"`
+	Key *string `env:"KEY"`
+	// RateLimit - количество одновременно исходящих запросов на сервер
+	RateLimit *int64 `env:"RATE_LIMIT"`
 }
 
 // ServiceConfig содержит опциональные значения из переменных окружения
@@ -43,6 +43,6 @@ type ServiceConfig struct {
 	// RESTORE определяет, нужно ли загружать сохранённые метрики из
 	// FILE_STORAGE_PATH при старте.
 	Restore *bool `env:"RESTORE"`
-	// KEY — секрет для подписи тел (HashSHA256, HMAC-SHA256); если не задан — без подписи.
-	KEY *string `env:"KEY"`
+	// Key — секрет для подписи тел (HashSHA256, HMAC-SHA256); если не задан — без подписи.
+	Key *string `env:"KEY"`
 }

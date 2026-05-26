@@ -90,8 +90,8 @@ func applyEnvConfig(envCfg config.ServiceConfig) {
 	if envCfg.DbDsn != nil {
 		flagDatabaseDSN = *envCfg.DbDsn
 	}
-	if envCfg.KEY != nil {
-		flagSecretKey = *envCfg.KEY
+	if envCfg.Key != nil {
+		flagSecretKey = *envCfg.Key
 	}
 }
 

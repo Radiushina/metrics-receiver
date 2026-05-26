@@ -61,11 +61,11 @@ func (r *Flags) parse() (exitCode int, err error) {
 	if envCfg.ReportIntervalSec != nil {
 		r.reportInterval = *envCfg.ReportIntervalSec
 	}
-	if envCfg.KEY != nil {
-		r.key = strings.TrimSpace(*envCfg.KEY)
+	if envCfg.Key != nil {
+		r.key = strings.TrimSpace(*envCfg.Key)
 	}
-	if envCfg.RATE_LIMIT != nil {
-		r.rateLimit = *envCfg.RATE_LIMIT
+	if envCfg.RateLimit != nil {
+		r.rateLimit = *envCfg.RateLimit
 	}
 
 	return 0, nil
