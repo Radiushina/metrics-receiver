@@ -45,4 +45,8 @@ type ServiceConfig struct {
 	Restore *bool `env:"RESTORE"`
 	// Key — секрет для подписи тел (HashSHA256, HMAC-SHA256); если не задан — без подписи.
 	Key *string `env:"KEY"`
+	// AUDIT_FILE - путь к файлу, в который сохраняются логи аудита. Если параметр не передан, аудит должен быть отключен
+	AuditFilePath *string `env:"AUDIT_FILE"`
+	// AUDIT_URL - полный URL, по которому отправляются логи аудита. Если параметр не передан, аудит должен быть отключен
+	AuditUrl *string `env:"AUDIT_URL"`
 }

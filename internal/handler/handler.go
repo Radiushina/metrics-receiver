@@ -8,11 +8,14 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"net"
 	"net/http"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/Radiushina/metrics-receiver.git/internal/audit"
 	"github.com/Radiushina/metrics-receiver.git/internal/logger"
 	models "github.com/Radiushina/metrics-receiver.git/internal/model"
 	"github.com/go-chi/chi/v5"
@@ -63,6 +66,13 @@ type (
 		log       *zap.Logger
 		db        DBChecker
 		secretKey string
+		audit     AuditPublisher
+	}
+
+	// AuditPublisher рассылает события аудита после успешного приёма метрик.
+	AuditPublisher interface {
+		Enabled() bool
+		Notify(ctx context.Context, e audit.Event)
 	}
 
 	// ServiceProvider описывает операции сервиса, которые нужны Handler.
@@ -89,7 +99,15 @@ type (
 
 // NewHandler создаёт Handler с указанным сервисом, опциональным Saver, логгером
 // и опциональной проверкой БД (db может быть nil, если DSN не задан).
-func NewHandler(service ServiceProvider, saver Saver, log *zap.Logger, db DBChecker, secretKey string) *Handler {
+// audit может быть nil или без подписчиков — тогда аудит отключаем.
+func NewHandler(
+	service ServiceProvider,
+	saver Saver,
+	log *zap.Logger,
+	db DBChecker,
+	secretKey string,
+	auditPub AuditPublisher,
+) *Handler {
 	log = logger.OrNop(log)
 	return &Handler{
 		service:   service,
@@ -97,6 +115,7 @@ func NewHandler(service ServiceProvider, saver Saver, log *zap.Logger, db DBChec
 		log:       log,
 		db:        db,
 		secretKey: secretKey,
+		audit:     auditPub,
 	}
 }
 
@@ -144,7 +163,7 @@ func (h *Handler) GetMetricValue() http.HandlerFunc {
 // по параметрам пути URL.
 func (h *Handler) UpdateFromPath() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		updateMetricsFromPath(w, r, h.service, h.saver, h.log, h.secretKey)
+		updateMetricsFromPath(w, r, h.service, h.saver, h.log, h.secretKey, h.audit)
 	}
 }
 
@@ -152,14 +171,33 @@ func (h *Handler) UpdateFromPath() http.HandlerFunc {
 // из JSON-тела запроса.
 func (h *Handler) UpdateFromBody() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		updateMetricsFromBody(w, r, h.service, h.saver, h.log, h.secretKey)
+		updateMetricsFromBody(w, r, h.service, h.saver, h.log, h.secretKey, h.audit)
 	}
 }
 
 func (h *Handler) UpdateMetrics() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		updateMetricsBatch(w, r, h.service, h.saver, h.log, h.secretKey)
+		updateMetricsBatch(w, r, h.service, h.saver, h.log, h.secretKey, h.audit)
 	}
+}
+
+func notifyAudit(auditPub AuditPublisher, r *http.Request, metrics []string) {
+	if auditPub == nil || !auditPub.Enabled() {
+		return
+	}
+	auditPub.Notify(r.Context(), audit.Event{
+		TS:        time.Now().Unix(),
+		Metrics:   metrics,
+		IpAddress: clientIP(r),
+	})
+}
+
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
 
 func updateMetricsFromPath(
@@ -169,6 +207,7 @@ func updateMetricsFromPath(
 	saver Saver,
 	log *zap.Logger,
 	secretKey string,
+	auditPub AuditPublisher,
 ) {
 	if err := verifyPathUpdateRequestHash(r, secretKey); err != nil {
 		writeProtectedPlainError(w, secretKey, http.StatusBadRequest, err.Error())
@@ -231,6 +270,8 @@ func updateMetricsFromPath(
 		}
 	}
 
+	notifyAudit(auditPub, r, []string{metric})
+
 	writeProtectedEmptyOK(w, secretKey)
 }
 
@@ -241,6 +282,7 @@ func updateMetricsFromBody(
 	saver Saver,
 	log *zap.Logger,
 	secretKey string,
+	auditPub AuditPublisher,
 ) {
 	defer func() { _ = r.Body.Close() }()
 
@@ -272,6 +314,8 @@ func updateMetricsFromBody(
 		return
 	}
 
+	notifyAudit(auditPub, r, []string{in.ID})
+
 	writeJSON(w, secretKey, out)
 }
 
@@ -282,6 +326,7 @@ func updateMetricsBatch(
 	saver Saver,
 	log *zap.Logger,
 	secretKey string,
+	auditPub AuditPublisher,
 ) {
 	defer func() { _ = r.Body.Close() }()
 
@@ -317,6 +362,12 @@ func updateMetricsBatch(
 		writeProtectedPlainError(w, secretKey, http.StatusInternalServerError, "failed to persist metrics")
 		return
 	}
+
+	names := make([]string, len(in))
+	for i, m := range in {
+		names[i] = m.ID
+	}
+	notifyAudit(auditPub, r, names)
 
 	writeJSON(w, secretKey, in)
 }

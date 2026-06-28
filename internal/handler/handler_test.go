@@ -126,7 +126,7 @@ func (m *mockDBChecker) Ping(ctx context.Context) error {
 }
 
 func newPingMux(db handler.DBChecker) http.Handler {
-	h := handler.NewHandler(newMockService(), nil, zap.NewNop(), db, "")
+	h := handler.NewHandler(newMockService(), nil, zap.NewNop(), db, "", nil)
 	r := chi.NewRouter()
 	r.Get("/ping", h.PingDB())
 	return r
@@ -137,7 +137,7 @@ func newTestMux(svc handler.ServiceProvider) http.Handler {
 }
 
 func newTestMuxWithKey(svc handler.ServiceProvider, secretKey string) http.Handler {
-	h := handler.NewHandler(svc, nil, zap.NewNop(), nil, secretKey)
+	h := handler.NewHandler(svc, nil, zap.NewNop(), nil, secretKey, nil)
 	r := chi.NewRouter()
 	r.Get("/", h.GetMetrics())
 	r.Post("/update/{mtype}/{metric}/{value}", h.UpdateFromPath())

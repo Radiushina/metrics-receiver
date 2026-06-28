@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Radiushina/metrics-receiver.git/internal/audit"
 	"github.com/Radiushina/metrics-receiver.git/internal/handler"
 	"github.com/Radiushina/metrics-receiver.git/internal/logger"
 	"github.com/Radiushina/metrics-receiver.git/internal/middleware"
@@ -103,7 +104,16 @@ func run() error {
 	if dbPool != nil {
 		dbForPing = dbPool
 	}
-	h := handler.NewHandler(svc, saver, logg, dbForPing, flagSecretKey)
+
+	auditPub := audit.NewPublisher()
+	if flagAuditFilePath != "" {
+		auditPub.Register(audit.NewFileObserver(flagAuditFilePath, logg))
+	}
+	if flagAuditUrl != "" {
+		auditPub.Register(audit.NewHTTPObserver(flagAuditUrl, logg))
+	}
+
+	h := handler.NewHandler(svc, saver, logg, dbForPing, flagSecretKey, auditPub)
 
 	logg.Info("starting metrics server on",
 		zap.String("address", flagRunAddr))
