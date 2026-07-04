@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
 	"io"
 	"net"
 	"net/http"
@@ -21,42 +20,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 )
-
-type metricRow struct {
-	Name  string
-	Value string
-}
-
-type metricsIndexData struct {
-	Gauges   []metricRow
-	Counters []metricRow
-}
-
-var metricsIndexTmpl = template.Must(template.New("metricsIndex").
-	Parse(`<!DOCTYPE html>
-<html lang="en">
-<head>
-	<meta charset="utf-8">
-	<title>Metrics</title>
-</head>
-<body>
-<h1>Metrics</h1>
-{{if .Gauges}}
-<h2>Gauges</h2>
-<ul>
-{{range .Gauges}}<li>{{.Name}}: {{.Value}}</li>
-{{end}}</ul>
-{{end}}
-{{if .Counters}}
-<h2>Counters</h2>
-<ul>
-{{range .Counters}}<li>{{.Name}}: {{.Value}}</li>
-{{end}}</ul>
-{{end}}
-{{if and (not .Gauges) (not .Counters)}}<p>No metrics yet.</p>{{end}}
-</body>
-</html>
-`))
 
 type (
 	// Handler связывает HTTP-обработчики со слоем сервиса.
@@ -624,42 +587,60 @@ func getMetricValue(w http.ResponseWriter, r *http.Request, service ServiceProvi
 
 func writeMetricsIndex(ctx context.Context, w http.ResponseWriter, service ServiceProvider, log *zap.Logger) {
 	gauges := service.Gauges(ctx)
-
-	gNames := make([]string, 0, len(gauges))
-	for n := range gauges {
-		gNames = append(gNames, n)
-	}
-	slices.Sort(gNames)
-	gRows := make([]metricRow, 0, len(gNames))
-	for _, n := range gNames {
-		gRows = append(gRows, metricRow{
-			Name:  n,
-			Value: strconv.FormatFloat(gauges[n], 'g', -1, 64),
-		})
-	}
-
 	counters := service.Counters(ctx)
-	cNames := make([]string, 0, len(counters))
-	for n := range counters {
-		cNames = append(cNames, n)
-	}
-	slices.Sort(cNames)
-	cRows := make([]metricRow, 0, len(cNames))
-	for _, n := range cNames {
-		cRows = append(cRows, metricRow{
-			Name:  n,
-			Value: strconv.FormatInt(counters[n], 10),
-		})
-	}
 
-	var buf bytes.Buffer
-	data := metricsIndexData{Gauges: gRows, Counters: cRows}
-	if err := metricsIndexTmpl.Execute(&buf, data); err != nil {
-		log.Error("metrics index template", zap.Error(err))
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
+	var b strings.Builder
+	b.Grow(256 + (len(gauges)+len(counters))*48)
+
+	b.WriteString("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n\t<meta charset=\"utf-8\">\n\t<title>Metrics</title>\n</head>\n<body>\n<h1>Metrics</h1>\n")
+	if len(gauges) > 0 {
+		b.WriteString("<h2>Gauges</h2>\n<ul>\n")
+		writeSortedGaugeItems(&b, gauges)
+		b.WriteString("</ul>\n")
 	}
+	if len(counters) > 0 {
+		b.WriteString("<h2>Counters</h2>\n<ul>\n")
+		writeSortedCounterItems(&b, counters)
+		b.WriteString("</ul>\n")
+	}
+	if len(gauges) == 0 && len(counters) == 0 {
+		b.WriteString("<p>No metrics yet.</p>\n")
+	}
+	b.WriteString("</body>\n</html>\n")
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(buf.Bytes())
+	if _, err := w.Write([]byte(b.String())); err != nil {
+		log.Error("write metrics index", zap.Error(err))
+	}
+}
+
+func writeSortedGaugeItems(b *strings.Builder, gauges map[string]float64) {
+	names := make([]string, 0, len(gauges))
+	for n := range gauges {
+		names = append(names, n)
+	}
+	slices.Sort(names)
+	for _, n := range names {
+		b.WriteString("<li>")
+		b.WriteString(n)
+		b.WriteString(": ")
+		b.WriteString(strconv.FormatFloat(gauges[n], 'g', -1, 64))
+		b.WriteString("</li>\n")
+	}
+}
+
+func writeSortedCounterItems(b *strings.Builder, counters map[string]int64) {
+	names := make([]string, 0, len(counters))
+	for n := range counters {
+		names = append(names, n)
+	}
+	slices.Sort(names)
+	for _, n := range names {
+		b.WriteString("<li>")
+		b.WriteString(n)
+		b.WriteString(": ")
+		b.WriteString(strconv.FormatInt(counters[n], 10))
+		b.WriteString("</li>\n")
+	}
 }

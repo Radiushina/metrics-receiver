@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"time"
 
+	//_ "net/http/pprof"
+
 	"github.com/Radiushina/metrics-receiver.git/internal/audit"
 	"github.com/Radiushina/metrics-receiver.git/internal/handler"
 	"github.com/Radiushina/metrics-receiver.git/internal/logger"
@@ -32,6 +34,11 @@ func main() {
 		os.Exit(exitCode)
 	}
 
+	/*
+	   go func() {
+	   		log.Println(http.ListenAndServe(":6060", nil))
+	   	}()
+	*/
 	if err := run(); err != nil {
 		log.Fatal("Server failed:", err)
 	}
