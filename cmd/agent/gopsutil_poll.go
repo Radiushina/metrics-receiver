@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Radiushina/metrics-receiver.git/internal/model"
+	models "github.com/Radiushina/metrics-receiver.git/internal/model"
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/mem"
 	"go.uber.org/zap"
