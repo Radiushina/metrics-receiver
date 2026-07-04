@@ -30,7 +30,8 @@ type ServiceConfig struct {
 	// по умолчанию и совпадает по смыслу с флагом командной строки -a).
 	RunAddr *string `env:"ADDRESS"`
 	// DATABASE_DSN — строка подключения к PostgreSQL (DSN); при наличии переменной
-	// перекрывает значение флага -d. Формат: postgres://user:pass@host:port/db?sslmode=...
+	// перекрывает значение флага -d.
+	// Локально с docker compose: postgres://developer:my_pass@localhost:5432/metrics?sslmode=disable
 	DbDsn *string `env:"DATABASE_DSN"`
 	// STORE_INTERVAL интерпретируется как целое число секунд. Значение 0 включает
 	// синхронное сохранение

@@ -2,10 +2,10 @@
 
 1. Запустите сервер с настроенным подключением к БД: переменная **`DATABASE_DSN`** или флаг **`-d`** со строкой PostgreSQL (DSN).
 
-Пример через терминал (пользователь `developer`, база `metrics`, без пароля для локального входа):
+Пример через терминал (пользователь `developer`, пароль `my_pass`, база `metrics` — как в docker-compose.yml):
 
 ```bash
-export DATABASE_DSN='postgres://user:password@localhost:5432/metrics?sslmode=disable'
+export DATABASE_DSN='postgres://developer:my_pass@localhost:5432/metrics?sslmode=disable'
 go run ./cmd/server
 ```
 

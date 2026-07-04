@@ -1,4 +1,5 @@
 BINARY = metrics-server
+DEFAULT_DATABASE_DSN = postgres://developer:my_pass@localhost:5432/metrics?sslmode=disable
 
 .PHONY: run lint run-server run-agent run-all build build-server build-agent migrate-postgres unit
 
@@ -90,7 +91,7 @@ test-iter11: build-server build-agent
 	@SERVER_PORT="$${ITER11_SERVER_PORT:-8080}"; \
 	export SERVER_PORT; \
 	export ADDRESS="localhost:$$SERVER_PORT"; \
-	DSN="$${ITER11_DATABASE_DSN:-postgres://developer@localhost:5432/metrics?sslmode=disable}"; \
+	DSN="$${ITER11_DATABASE_DSN:-$(DEFAULT_DATABASE_DSN)}"; \
 	./metricstest -test.v -test.run='^TestIteration11$$' \
 		-agent-binary-path=cmd/agent/agent \
 		-binary-path=cmd/server/server \
@@ -104,7 +105,7 @@ test-iter12: build-server build-agent
 	@cd "$(CURDIR)" && \
 	SERVER_PORT="$${ITER12_SERVER_PORT:-8086}" && \
 	export SERVER_PORT ADDRESS="localhost:$$SERVER_PORT" && \
-	DSN="$${ITER12_DATABASE_DSN:-postgres://developer@localhost:5432/metrics?sslmode=disable}" && \
+	DSN="$${ITER12_DATABASE_DSN:-$(DEFAULT_DATABASE_DSN)}" && \
 	./metricstest -test.v -test.run='^TestIteration12$$' \
 		-agent-binary-path="$(CURDIR)/cmd/agent/agent" \
 		-binary-path="$(CURDIR)/cmd/server/server" \
@@ -118,7 +119,7 @@ test-iter13: build-server build-agent
 	@cd "$(CURDIR)" && \
 	SERVER_PORT="$${ITER13_SERVER_PORT:-8086}" && \
 	export SERVER_PORT ADDRESS="localhost:$$SERVER_PORT" && \
-	DSN="$${ITER13_DATABASE_DSN:-postgres://developer@localhost:5432/metrics?sslmode=disable}" && \
+	DSN="$${ITER13_DATABASE_DSN:-$(DEFAULT_DATABASE_DSN)}" && \
 	./metricstest -test.v -test.run='^TestIteration13$$' \
 		-agent-binary-path="$(CURDIR)/cmd/agent/agent" \
 		-binary-path="$(CURDIR)/cmd/server/server" \
@@ -131,7 +132,7 @@ test-iter14: build-server build-agent
 	@cd "$(CURDIR)" && \
 	SERVER_PORT="$${ITER14_SERVER_PORT:-8086}" && \
 	export SERVER_PORT ADDRESS="localhost:$$SERVER_PORT" && \
-	DSN="$${ITER14_DATABASE_DSN:-postgres://developer@localhost:5432/metrics?sslmode=disable}" && \
+	DSN="$${ITER14_DATABASE_DSN:-$(DEFAULT_DATABASE_DSN)}" && \
 	KEY_FILE="$${ITER14_KEY_FILE:-$$(mktemp)}" && \
 	./metricstest -test.v -test.run='^TestIteration14$$' \
 		-agent-binary-path="$(CURDIR)/cmd/agent/agent" \

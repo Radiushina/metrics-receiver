@@ -1,0 +1,67 @@
+# Локально с хоста: postgres://developer:my_pass@localhost:5432/metrics?sslmode=disable
+# Внутри compose-сети:  postgres://developer:my_pass@postgres:5432/metrics?sslmode=disable
+
+services:
+  postgres:
+    image: postgres:16.3
+    environment:
+      POSTGRES_USER: developer
+      POSTGRES_PASSWORD: my_pass
+      POSTGRES_DB: metrics
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U developer -d metrics"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  adminer:
+    image: adminer:5
+    ports:
+      - "8081:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: server
+    ports:
+      - "8080:8080"
+    environment:
+      ADDRESS: ":8080"
+      DATABASE_DSN: postgres://developer:my_pass@postgres:5432/metrics?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: agent
+    environment:
+      ADDRESS: server:8080
+      POLL_INTERVAL: 2
+      REPORT_INTERVAL: 10
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
