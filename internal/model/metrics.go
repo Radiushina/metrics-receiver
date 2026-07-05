@@ -1,3 +1,4 @@
+// Package models определяет типы метрик и имена gauge/counter для API и агента.
 package models
 
 // MetricType — строковый перечислимый тип: вид метрики в HTTP/JSON API.

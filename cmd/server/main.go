@@ -175,6 +175,7 @@ func run() error {
 	return runErr
 }
 
+// NewMux собирает chi-роутер с middleware и регистрирует маршруты метрик.
 func NewMux(logg *zap.Logger, h *handler.Handler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Recover(logg))

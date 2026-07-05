@@ -7,9 +7,8 @@ import (
 	"strings"
 )
 
-// DecompressRequest transparently gunzips request body when Content-Encoding:
-// gzip is present.
-// If Content-Encoding is present and not supported, it returns 415.
+// DecompressRequest распаковывает тело запроса, если указан Content-Encoding: gzip.
+// При неподдерживаемой кодировке возвращает 415.
 func DecompressRequest(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		enc, ok := normalizedContentEncoding(r)
@@ -51,9 +50,8 @@ func normalizedContentEncoding(r *http.Request) (enc string, ok bool) {
 	return enc, enc != "" && enc != "identity"
 }
 
-// CompressResponse gzips responses when the client supports
-// gzip (Accept-Encoding)
-// and the response Content-Type is application/json or text/html.
+// CompressResponse сжимает ответ gzip, если клиент поддерживает Accept-Encoding: gzip
+// и Content-Type — application/json или text/html.
 func CompressResponse(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !clientAcceptsGzip(r) || r.Method == http.MethodHead {

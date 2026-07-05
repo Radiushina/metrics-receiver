@@ -92,7 +92,7 @@ func (h *Handler) GetMetrics() http.HandlerFunc {
 	}
 }
 
-// PingDB возвращает HTTP-обработчик, который проверяет соединение с бд.
+// PingDB возвращает HTTP-обработчик, который проверяет соединение с БД.
 func (h *Handler) PingDB() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if h.db == nil {

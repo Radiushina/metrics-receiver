@@ -12,17 +12,15 @@ import (
 	models "github.com/Radiushina/metrics-receiver.git/internal/model"
 )
 
-// FileStorage persists the in-memory metrics snapshot to a JSON file.
-//
-// It writes through a temporary file followed by an atomic rename.
-// This prevents partially written JSON if the process crashes/restarts mid-save:
-// on startup Restore will see either the previous valid snapshot or the new one.
+// FileStorage сохраняет снимок метрик из памяти в JSON-файл.
+// Запись идёт через временный файл и атомарный rename — при сбое
+// остаётся либо старый снимок, либо новый целый файл.
 type FileStorage struct {
 	repo *MemoryRepo
 	path string
 }
 
-// NewFileStorage creates a file-backed snapshot storage for the given repository.
+// NewFileStorage создаёт файловое хранилище снимков для указанного репозитория.
 func NewFileStorage(repo *MemoryRepo, path string) *FileStorage {
 	if path == "" {
 		panic("file storage path is empty")
@@ -33,7 +31,7 @@ func NewFileStorage(repo *MemoryRepo, path string) *FileStorage {
 	}
 }
 
-// Save persists the current metrics snapshot to disk.
+// Save записывает текущий снимок метрик на диск.
 func (s *FileStorage) Save(ctx context.Context) error {
 	dir := filepath.Dir(s.path)
 	if dir != "." && dir != "" {
@@ -82,7 +80,7 @@ func (s *FileStorage) Save(ctx context.Context) error {
 	return nil
 }
 
-// Restore loads metrics from disk into the repository if the file exists.
+// Restore загружает метрики с диска в репозиторий, если файл существует.
 func (s *FileStorage) Restore(ctx context.Context) error {
 	f, ok, err := openStorageFile(s.path)
 	if err != nil {

@@ -1,3 +1,4 @@
+// Package repository реализует хранение метрик в памяти, файле и PostgreSQL.
 package repository
 
 import (

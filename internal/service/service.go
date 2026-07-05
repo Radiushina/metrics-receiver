@@ -1,3 +1,4 @@
+// Package service предоставляет слой бизнес-логики над репозиторием метрик.
 package service
 
 import (
@@ -7,12 +8,12 @@ import (
 )
 
 type (
-	// Service provides a thin API over the metrics repository.
+	// Service — обёртка над RepositoryProvider.
 	Service struct {
 		repo RepositoryProvider
 	}
 
-	// RepositoryProvider describes the repository operations.
+	// RepositoryProvider описывает операции хранилища метрик.
 	RepositoryProvider interface {
 		SetGauge(ctx context.Context, name string, value float64) error
 		AddCounter(ctx context.Context, name string, delta int64) error
@@ -24,44 +25,44 @@ type (
 	}
 )
 
-// NewService constructs a Service backed by the provided repository.
+// NewService создаёт Service с указанным репозиторием.
 func NewService(repo RepositoryProvider) Service {
 	return Service{
 		repo: repo,
 	}
 }
 
-// SetGauge stores a gauge value by name.
+// SetGauge сохраняет значение gauge по имени метрики.
 func (s Service) SetGauge(ctx context.Context, name string, value float64) error {
 	return s.repo.SetGauge(ctx, name, value)
 }
 
-// AddCounter increments a counter by delta.
+// AddCounter увеличивает счётчик на delta.
 func (s Service) AddCounter(ctx context.Context, name string, value int64) error {
 	return s.repo.AddCounter(ctx, name, value)
 }
 
-// GetGauge returns a gauge value and whether it exists.
+// GetGauge возвращает значение gauge и признак, что метрика есть.
 func (s Service) GetGauge(ctx context.Context, name string) (float64, bool) {
 	return s.repo.GetGauge(ctx, name)
 }
 
-// GetCounter returns a counter value and whether it exists.
+// GetCounter возвращает значение счётчика и признак, что метрика есть.
 func (s Service) GetCounter(ctx context.Context, name string) (int64, bool) {
 	return s.repo.GetCounter(ctx, name)
 }
 
-// Gauges returns a copy of all gauge values.
+// Gauges возвращает копию всех gauge-значений.
 func (s Service) Gauges(ctx context.Context) map[string]float64 {
 	return s.repo.Gauges(ctx)
 }
 
-// Counters returns a copy of all counter values.
+// Counters возвращает копию всех значений счётчиков.
 func (s Service) Counters(ctx context.Context) map[string]int64 {
 	return s.repo.Counters(ctx)
 }
 
-// UpdateMetricsBatch applies a list of metric updates in one operation.
+// UpdateMetricsBatch применяет список обновлений метрик за одну операцию.
 func (s Service) UpdateMetricsBatch(ctx context.Context, metrics []models.Metrics) error {
 	return s.repo.UpdateMetricsBatch(ctx, metrics)
 }

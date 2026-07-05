@@ -1,3 +1,4 @@
+// Package middleware содержит HTTP-middleware: recovery, gzip-сжатие и распаковку.
 package middleware
 
 import (
@@ -7,8 +8,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// Recover intercepts panics during request handling, logs them,
-// and replies with HTTP 500 instead of crashing the process.
+// Recover перехватывает panic при обработке запроса, логирует и отвечает HTTP 500.
 func Recover(log *zap.Logger) func(http.Handler) http.Handler {
 	if log == nil {
 		log = zap.NewNop()

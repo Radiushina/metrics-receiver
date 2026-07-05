@@ -1,3 +1,4 @@
+// Package logger создаёт zap-логгер и HTTP-middleware для логирования запросов.
 package logger
 
 import (
@@ -7,7 +8,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// New builds a zap production logger configured with the provided level.
+// New создаёт production-логгер zap с указанным уровнем логирования.
 func New(level string) (*zap.Logger, error) {
 	lvl, err := zap.ParseAtomicLevel(level)
 	if err != nil {
@@ -22,7 +23,7 @@ func New(level string) (*zap.Logger, error) {
 	return zl, nil
 }
 
-// OrNop returns l if it's not nil, otherwise a no-op logger.
+// OrNop возвращает l, если он не nil, иначе no-op логгер.
 func OrNop(l *zap.Logger) *zap.Logger {
 	if l == nil {
 		return zap.NewNop()
@@ -55,8 +56,7 @@ func (lw *loggingResponseWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
-// LoggingMiddleware logs request details (URI, method, duration)
-// and response details (status code, response size).
+// LoggingMiddleware логирует URI, метод, длительность, статус и размер ответа.
 func LoggingMiddleware(log *zap.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
