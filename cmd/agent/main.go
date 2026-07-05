@@ -73,25 +73,21 @@ func main() {
 	)
 
 	var wg sync.WaitGroup
-	wg.Add(3)
 
 	// Горутина 1: runtime.MemStats (Alloc, HeapAlloc, …) и RandomValue.
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		runRuntimePollLoop(logg, pollInterval, &ms, &mu, gaugeValues, rnd, &pollCountDelta)
-	}()
+	})
 
 	// Горутина 2: отправка метрик на сервер (worker pool, RATE_LIMIT).
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		runReportLoop(logg, reportInterval, &mu, gaugeValues, &pollCountDelta, sender)
-	}()
+	})
 
 	// Горутина 3: gopsutil — TotalMemory, FreeMemory, CPUutilization0…N-1.
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		runGopsutilPollLoop(logg, pollInterval, &mu, gaugeValues, cpuCount)
-	}()
+	})
 
 	wg.Wait()
 }

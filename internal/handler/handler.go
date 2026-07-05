@@ -1,3 +1,5 @@
+// Package handler содержит HTTP-обработчики сервера метрик:
+// приём обновлений, чтение значений, ping БД и HTML-индекс.
 package handler
 
 import (
@@ -138,6 +140,8 @@ func (h *Handler) UpdateFromBody() http.HandlerFunc {
 	}
 }
 
+// UpdateMetrics возвращает HTTP-обработчик, который обновляет метрики батчем
+// из JSON-массива в теле запроса (POST /updates/)
 func (h *Handler) UpdateMetrics() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		updateMetricsBatch(w, r, h.service, h.saver, h.log, h.secretKey, h.audit)
@@ -151,7 +155,7 @@ func notifyAudit(auditPub AuditPublisher, r *http.Request, metrics []string) {
 	auditPub.Notify(r.Context(), audit.Event{
 		TS:        time.Now().Unix(),
 		Metrics:   metrics,
-		IpAddress: clientIP(r),
+		IPAddress: clientIP(r),
 	})
 }
 
@@ -592,21 +596,21 @@ func writeMetricsIndex(ctx context.Context, w http.ResponseWriter, service Servi
 	var b strings.Builder
 	b.Grow(256 + (len(gauges)+len(counters))*48)
 
-	b.WriteString("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n\t<meta charset=\"utf-8\">\n\t<title>Metrics</title>\n</head>\n<body>\n<h1>Metrics</h1>\n")
+	builderWriteString(&b, "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n\t<meta charset=\"utf-8\">\n\t<title>Metrics</title>\n</head>\n<body>\n<h1>Metrics</h1>\n")
 	if len(gauges) > 0 {
-		b.WriteString("<h2>Gauges</h2>\n<ul>\n")
+		builderWriteString(&b, "<h2>Gauges</h2>\n<ul>\n")
 		writeSortedGaugeItems(&b, gauges)
-		b.WriteString("</ul>\n")
+		builderWriteString(&b, "</ul>\n")
 	}
 	if len(counters) > 0 {
-		b.WriteString("<h2>Counters</h2>\n<ul>\n")
+		builderWriteString(&b, "<h2>Counters</h2>\n<ul>\n")
 		writeSortedCounterItems(&b, counters)
-		b.WriteString("</ul>\n")
+		builderWriteString(&b, "</ul>\n")
 	}
 	if len(gauges) == 0 && len(counters) == 0 {
-		b.WriteString("<p>No metrics yet.</p>\n")
+		builderWriteString(&b, "<p>No metrics yet.</p>\n")
 	}
-	b.WriteString("</body>\n</html>\n")
+	builderWriteString(&b, "</body>\n</html>\n")
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
@@ -622,11 +626,11 @@ func writeSortedGaugeItems(b *strings.Builder, gauges map[string]float64) {
 	}
 	slices.Sort(names)
 	for _, n := range names {
-		b.WriteString("<li>")
-		b.WriteString(n)
-		b.WriteString(": ")
-		b.WriteString(strconv.FormatFloat(gauges[n], 'g', -1, 64))
-		b.WriteString("</li>\n")
+		builderWriteString(b, "<li>")
+		builderWriteString(b, n)
+		builderWriteString(b, ": ")
+		builderWriteString(b, strconv.FormatFloat(gauges[n], 'g', -1, 64))
+		builderWriteString(b, "</li>\n")
 	}
 }
 
@@ -637,10 +641,15 @@ func writeSortedCounterItems(b *strings.Builder, counters map[string]int64) {
 	}
 	slices.Sort(names)
 	for _, n := range names {
-		b.WriteString("<li>")
-		b.WriteString(n)
-		b.WriteString(": ")
-		b.WriteString(strconv.FormatInt(counters[n], 10))
-		b.WriteString("</li>\n")
+		builderWriteString(b, "<li>")
+		builderWriteString(b, n)
+		builderWriteString(b, ": ")
+		builderWriteString(b, strconv.FormatInt(counters[n], 10))
+		builderWriteString(b, "</li>\n")
 	}
+}
+
+// strings.Builder.WriteString не возвращает реальных ошибок; явно игнорируем для revive.
+func builderWriteString(b *strings.Builder, s string) {
+	_, _ = b.WriteString(s)
 }

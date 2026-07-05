@@ -168,7 +168,7 @@ func (r *PostgresRepo) updateMetricsBatchOnce(ctx context.Context, metrics []mod
 	}
 	// можно вызвать Rollback в defer,
 	// если Commit будет раньше, то откат проигнорируется
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	const qGauge = `
 INSERT INTO gauges (name, value) VALUES ($1, $2)

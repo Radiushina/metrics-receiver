@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	//_ "net/http/pprof"
+	// _ "net/http/pprof"
 
 	"github.com/Radiushina/metrics-receiver.git/internal/audit"
 	"github.com/Radiushina/metrics-receiver.git/internal/handler"
@@ -116,8 +116,8 @@ func run() error {
 	if flagAuditFilePath != "" {
 		auditPub.Register(audit.NewFileObserver(flagAuditFilePath, logg))
 	}
-	if flagAuditUrl != "" {
-		auditPub.Register(audit.NewHTTPObserver(flagAuditUrl, logg))
+	if flagAuditURL != "" {
+		auditPub.Register(audit.NewHTTPObserver(flagAuditURL, logg))
 	}
 
 	h := handler.NewHandler(svc, saver, logg, dbForPing, flagSecretKey, auditPub)

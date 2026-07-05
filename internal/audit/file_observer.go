@@ -29,7 +29,7 @@ func NewFileObserver(path string, logg *zap.Logger) *FileObserver {
 
 // Notify сериализует event в JSON и дописывает строку в конец файла.
 // Вызывается Publisher'ом; ctx здесь можно не использовать (запись локальная).
-func (f *FileObserver) Notify(ctx context.Context, event Event) error {
+func (f *FileObserver) Notify(_ context.Context, event Event) error {
 	// Event -> JSON в одну строку
 	data, err := json.Marshal(event)
 	if err != nil {
@@ -45,7 +45,7 @@ func (f *FileObserver) Notify(ctx context.Context, event Event) error {
 		f.logg.Error("audit file: open", zap.String("path", f.path), zap.Error(err))
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Пишем в файл JSON + '\n' — по одному событию на строку
 	if _, err := file.Write(append(data, '\n')); err != nil {

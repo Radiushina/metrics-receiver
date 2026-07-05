@@ -15,6 +15,12 @@ var agentRetryDelays = []time.Duration{
 	5 * time.Second,
 }
 
+var retriableTransportErrnos = []error{
+	syscall.ECONNREFUSED, syscall.ECONNRESET, syscall.EPIPE,
+	syscall.ETIMEDOUT, syscall.EHOSTUNREACH, syscall.ENETUNREACH,
+	syscall.ECONNABORTED, syscall.ENETDOWN,
+}
+
 // retrySleep подменяется в тестах, чтобы не ждать реальные секунды.
 var retrySleep = func(d time.Duration) {
 	time.Sleep(d)
@@ -43,7 +49,7 @@ func isRetriableTransportErr(err error) bool {
 		return false
 	}
 	var netErr net.Error
-	if errors.As(err, &netErr) && (netErr.Timeout() || netErr.Temporary()) {
+	if errors.As(err, &netErr) && netErr.Timeout() {
 		return true
 	}
 	var dnsErr *net.DNSError
@@ -54,12 +60,8 @@ func isRetriableTransportErr(err error) bool {
 	if errors.As(err, &opErr) {
 		return isRetriableTransportErr(opErr.Err)
 	}
-	var errno syscall.Errno
-	if errors.As(err, &errno) {
-		switch errno {
-		case syscall.ECONNREFUSED, syscall.ECONNRESET, syscall.EPIPE,
-			syscall.ETIMEDOUT, syscall.EHOSTUNREACH, syscall.ENETUNREACH,
-			syscall.ECONNABORTED, syscall.ENETDOWN:
+	for _, target := range retriableTransportErrnos {
+		if errors.Is(err, target) {
 			return true
 		}
 	}

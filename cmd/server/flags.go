@@ -29,7 +29,7 @@ var (
 	flagDatabaseDSN      string
 	flagSecretKey        string
 	flagAuditFilePath    string
-	flagAuditUrl         string
+	flagAuditURL         string
 )
 
 func parseFlags() (exitCode int, err error) {
@@ -65,7 +65,7 @@ func registerFlags(fs *flag.FlagSet) {
 	fs.StringVar(&flagDatabaseDSN, "d", defaultDatabaseDSN, "database dsn")
 	fs.StringVar(&flagSecretKey, "k", defaultSecretKey, "shared secret for HMAC-SHA256 (HashSHA256 header); empty disables signing")
 	fs.StringVar(&flagAuditFilePath, "audit-file", "", "path to audit file")
-	fs.StringVar(&flagAuditUrl, "audit-url", "", "url to send audit logs")
+	fs.StringVar(&flagAuditURL, "audit-url", "", "url to send audit logs")
 }
 
 func parseCLI(fs *flag.FlagSet) (exitCode int, err error) {
@@ -100,8 +100,8 @@ func applyEnvConfig(envCfg config.ServiceConfig) {
 	if envCfg.AuditFilePath != nil {
 		flagAuditFilePath = strings.TrimSpace(*envCfg.AuditFilePath)
 	}
-	if envCfg.AuditUrl != nil {
-		flagAuditUrl = strings.TrimSpace(*envCfg.AuditUrl)
+	if envCfg.AuditURL != nil {
+		flagAuditURL = strings.TrimSpace(*envCfg.AuditURL)
 	}
 }
 
@@ -117,7 +117,7 @@ func normalize() {
 	flagDatabaseDSN = strings.TrimSpace(flagDatabaseDSN)
 	flagSecretKey = strings.TrimSpace(flagSecretKey)
 	flagAuditFilePath = strings.TrimSpace(flagAuditFilePath)
-	flagAuditUrl = strings.TrimSpace(flagAuditUrl)
+	flagAuditURL = strings.TrimSpace(flagAuditURL)
 }
 
 func validate() error {

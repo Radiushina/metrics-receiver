@@ -49,7 +49,7 @@ func (h *HTTPObserver) Notify(ctx context.Context, event Event) error {
 		h.log.Error("audit http: do request", zap.String("url", h.url), zap.Error(err))
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		err := fmt.Errorf("unexpected status %d", resp.StatusCode)
 		h.log.Error("audit http: bad status",
