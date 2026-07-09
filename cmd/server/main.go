@@ -13,8 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	// _ "net/http/pprof"
-
 	"github.com/Radiushina/metrics-receiver.git/internal/audit"
 	"github.com/Radiushina/metrics-receiver.git/internal/handler"
 	"github.com/Radiushina/metrics-receiver.git/internal/logger"
@@ -33,12 +31,6 @@ func main() {
 		}
 		os.Exit(exitCode)
 	}
-
-	/*
-	   go func() {
-	   		log.Println(http.ListenAndServe(":6060", nil))
-	   	}()
-	*/
 	if err := run(); err != nil {
 		log.Fatal("Server failed:", err)
 	}
@@ -112,10 +104,22 @@ func run() error {
 		dbForPing = dbPool
 	}
 
+	var fileObs *audit.FileObserver
 	auditPub := audit.NewPublisher()
 	if flagAuditFilePath != "" {
-		auditPub.Register(audit.NewFileObserver(flagAuditFilePath, logg))
+		var err error
+		fileObs, err = audit.NewFileObserver(flagAuditFilePath, logg)
+		if err != nil {
+			return err
+		}
+		auditPub.Register(fileObs)
 	}
+	defer func() {
+		if fileObs != nil {
+			_ = fileObs.Close()
+		}
+	}()
+
 	if flagAuditURL != "" {
 		auditPub.Register(audit.NewHTTPObserver(flagAuditURL, logg))
 	}
