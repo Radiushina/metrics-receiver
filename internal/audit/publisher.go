@@ -67,13 +67,11 @@ func (p *Publisher) worker(ctx context.Context) {
 func (p *Publisher) notifyObservers(ctx context.Context, event Event) {
 	var wg sync.WaitGroup
 	for _, o := range p.observers {
-		wg.Add(1)
-		go func(obs Observer) {
-			defer wg.Done()
-			if err := obs.Notify(ctx, event); err != nil {
+		wg.Go(func() {
+			if err := o.Notify(ctx, event); err != nil {
 				p.log.Error("audit observer failed", zap.Error(err))
 			}
-		}(o)
+		})
 	}
 	wg.Wait()
 }
