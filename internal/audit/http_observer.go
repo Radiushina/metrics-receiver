@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Radiushina/metrics-receiver.git/internal/logger"
+	"github.com/hashicorp/go-retryablehttp"
 	"go.uber.org/zap"
 )
 
@@ -16,18 +17,20 @@ import (
 // Реализует интерфейс Observer.
 type HTTPObserver struct {
 	url    string       // полный URL из --audit-url / AUDIT_URL
-	client *http.Client // HTTP-клиент с таймаутом
+	client *http.Client // HTTP-клиент с автоматическими ретраями
 	log    *zap.Logger
 }
 
-// NewHTTPObserver создаёт observer, который шлет события на удалённый сервер.
+// NewHTTPObserver создаёт observer, который шлёт события на удалённый сервер.
 func NewHTTPObserver(url string, log *zap.Logger) *HTTPObserver {
+	retryClient := retryablehttp.NewClient()
+	retryClient.HTTPClient.Timeout = 5 * time.Second
+	retryClient.RetryMax = 3 // всего до четырёх попыток, как у агента метрик
+
 	return &HTTPObserver{
-		url: url,
-		client: &http.Client{
-			Timeout: 5 * time.Second, // не висим, если observer недоступен
-		},
-		log: logger.OrNop(log),
+		url:    url,
+		client: retryClient.StandardClient(),
+		log:    logger.OrNop(log),
 	}
 }
 

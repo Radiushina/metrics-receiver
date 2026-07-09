@@ -60,6 +60,7 @@ func (f *FileObserver) Notify(_ context.Context, event Event) error {
 	return nil
 }
 
+// Close закрывает файл аудита при завершении работы сервера.
 func (f *FileObserver) Close() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
