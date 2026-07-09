@@ -105,7 +105,7 @@ func run() error {
 	}
 
 	var fileObs *audit.FileObserver
-	auditPub := audit.NewPublisher()
+	auditPub := audit.NewPublisher(ctx, logg)
 	if flagAuditFilePath != "" {
 		var err error
 		fileObs, err = audit.NewFileObserver(flagAuditFilePath, logg)
@@ -115,6 +115,7 @@ func run() error {
 		auditPub.Register(fileObs)
 	}
 	defer func() {
+		auditPub.Close()
 		if fileObs != nil {
 			_ = fileObs.Close()
 		}
