@@ -25,14 +25,21 @@ import (
 )
 
 func main() {
+	runServer()
+}
+
+func runServer() {
 	if exitCode, err := parseFlags(); err != nil {
 		if !errors.Is(err, flag.ErrHelp) {
-			_, _ = fmt.Fprintln(os.Stderr, err)
+			if _, printErr := fmt.Fprintln(os.Stderr, err); printErr != nil {
+				os.Exit(1)
+			}
 		}
 		os.Exit(exitCode)
 	}
 	if err := run(); err != nil {
-		log.Fatal("Server failed:", err)
+		log.Print("Server failed:", err)
+		os.Exit(1)
 	}
 }
 
@@ -117,7 +124,9 @@ func run() error {
 	defer func() {
 		auditPub.Close()
 		if fileObs != nil {
-			_ = fileObs.Close()
+			if err := fileObs.Close(); err != nil {
+				return
+			}
 		}
 	}()
 
@@ -146,7 +155,9 @@ func run() error {
 							zap.Error(err))
 					}
 				case <-ctx.Done():
-					_ = fileStorage.Save(context.Background())
+					if err := fileStorage.Save(context.Background()); err != nil {
+						logg.Warn("failed to persist metrics on shutdown", zap.Error(err))
+					}
 					return
 				}
 			}

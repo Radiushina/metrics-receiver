@@ -253,9 +253,9 @@ func updateMetricsFromBody(
 ) {
 	defer func() { _ = r.Body.Close() }()
 
-	reqBody, err := readRequestBody(r)
-	if err != nil {
-		writeProtectedPlainError(w, secretKey, http.StatusBadRequest, err.Error())
+	reqBody, errRead := readRequestBody(r)
+	if errRead != nil {
+		writeProtectedPlainError(w, secretKey, http.StatusBadRequest, errRead.Error())
 		return
 	}
 	if err := verifyRequestBodyHashSHA256(secretKey, r, reqBody); err != nil {
@@ -297,9 +297,9 @@ func updateMetricsBatch(
 ) {
 	defer func() { _ = r.Body.Close() }()
 
-	reqBody, err := readRequestBody(r)
-	if err != nil {
-		writeProtectedPlainError(w, secretKey, http.StatusBadRequest, err.Error())
+	reqBody, errRead := readRequestBody(r)
+	if errRead != nil {
+		writeProtectedPlainError(w, secretKey, http.StatusBadRequest, errRead.Error())
 		return
 	}
 	if err := verifyRequestBodyHashSHA256(secretKey, r, reqBody); err != nil {

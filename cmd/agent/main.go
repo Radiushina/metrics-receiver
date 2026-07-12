@@ -18,12 +18,18 @@ import (
 )
 
 func main() {
+	runAgent()
+}
+
+func runAgent() {
 	flags := NewFlags()
 
 	exitCode, err := flags.parse()
 	if err != nil {
 		if !errors.Is(err, flag.ErrHelp) {
-			_, _ = fmt.Fprintln(os.Stderr, err)
+			if _, printErr := fmt.Fprintln(os.Stderr, err); printErr != nil {
+				os.Exit(1)
+			}
 		}
 		os.Exit(exitCode)
 	}

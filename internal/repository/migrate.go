@@ -32,8 +32,8 @@ func MigrateUp(dsn string) error {
 		return fmt.Errorf("migrate: %w", err)
 	}
 	dir := filepath.Join(wd, "migrations")
-	if _, err := os.Stat(dir); err != nil {
-		return fmt.Errorf("migrate: %w", err)
+	if _, statErr := os.Stat(dir); statErr != nil {
+		return fmt.Errorf("migrate: %w", statErr)
 	}
 	srcURL := "file://" + filepath.ToSlash(dir)
 	m, err := migrate.New(srcURL, migrateDatabaseURL(dsn))

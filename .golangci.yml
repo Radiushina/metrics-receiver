@@ -31,6 +31,9 @@ linters:
 
         - name: package-comments
           disabled: true
+        # iter20 osexitanalyzer: os.Exit в runAgent/runServer, не в main — против deep-exit.
+        - name: deep-exit
+          disabled: true
 
   exclusions:
     rules:
