@@ -1,6 +1,9 @@
 // Package audit реализует паттерн Observer для аудита успешного приёма метрик.
 package audit
 
+//go:generate go run ../../cmd/reset
+
+// generate:reset
 // Event — запись аудита после успешного приёма метрик.
 type Event struct {
 	// TS — Unix-время события (секунды).

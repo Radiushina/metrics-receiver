@@ -12,6 +12,9 @@ const (
 	Gauge MetricType = "gauge"
 )
 
+//go:generate go run ../../cmd/reset
+
+// generate:reset
 // Metrics — одна метрика в теле JSON (обновление или запрос значения).
 type Metrics struct {
 	// ID — имя метрики (строковый идентификатор).
