@@ -3,8 +3,14 @@ package main
 import (
 	"github.com/Radiushina/metrics-receiver.git/internal/agent"
 	models "github.com/Radiushina/metrics-receiver.git/internal/model"
+	"github.com/Radiushina/metrics-receiver.git/internal/pool"
 	"github.com/go-resty/resty/v2"
 )
+
+// metricsPool переиспользует *models.Metrics между циклами отправки батча.
+var metricsPool = pool.New(func() *models.Metrics {
+	return &models.Metrics{}
+})
 
 // batchJob — задача воркеру: отправить один пакет метрик на POST /updates/.
 type batchJob struct {
@@ -61,36 +67,37 @@ func (s *metricSender) buildMetricsFromSnapshot(snapshot map[string]float64, del
 	capacity := len(models.GaugeNames) + len(s.gopsutilGaugeNames) + 2
 	metrics := make([]models.Metrics, 0, capacity)
 
+	appendGauge := func(name string, value float64) {
+		m := metricsPool.Get()
+		m.ID = name
+		m.MType = models.Gauge
+		m.Value = &value
+		m.Delta = nil
+		metrics = append(metrics, *m)
+		m.Value = nil
+		m.Delta = nil
+		metricsPool.Put(m)
+	}
+
 	for _, name := range models.GaugeNames {
-		v := snapshot[name]
-		metrics = append(metrics, models.Metrics{
-			ID:    name,
-			MType: models.Gauge,
-			Value: &v,
-		})
+		appendGauge(name, snapshot[name])
 	}
 
 	for _, name := range s.gopsutilGaugeNames {
-		v := snapshot[name]
-		metrics = append(metrics, models.Metrics{
-			ID:    name,
-			MType: models.Gauge,
-			Value: &v,
-		})
+		appendGauge(name, snapshot[name])
 	}
 
-	rv := snapshot["RandomValue"]
-	metrics = append(metrics, models.Metrics{
-		ID:    "RandomValue",
-		MType: models.Gauge,
-		Value: &rv,
-	})
+	appendGauge("RandomValue", snapshot["RandomValue"])
 
-	metrics = append(metrics, models.Metrics{
-		ID:    models.PollCount,
-		MType: models.Counter,
-		Delta: &delta,
-	})
+	m := metricsPool.Get()
+	m.ID = models.PollCount
+	m.MType = models.Counter
+	m.Delta = &delta
+	m.Value = nil
+	metrics = append(metrics, *m)
+	m.Delta = nil
+	m.Value = nil
+	metricsPool.Put(m)
 
 	return metrics
 }

@@ -16,8 +16,14 @@ import (
 	"strings"
 
 	models "github.com/Radiushina/metrics-receiver.git/internal/model"
+	"github.com/Radiushina/metrics-receiver.git/internal/pool"
 	"github.com/go-resty/resty/v2"
 )
+
+// metricPool переиспользует *models.Metrics при одиночной отправке (PostGauge/PostCounter).
+var metricPool = pool.New(func() *models.Metrics {
+	return &models.Metrics{}
+})
 
 // PostGaugeMetric отправляет на сервер значение метрики типа gauge.
 func PostGaugeMetric(
@@ -95,14 +101,16 @@ func basePostMetric(
 		return err
 	}
 
-	metric := models.Metrics{
-		ID:    name,
-		MType: metricType,
-		Delta: delta,
-		Value: value,
-	}
+	metric := metricPool.Get()
+	metric.ID = name
+	metric.MType = metricType
+	metric.Delta = delta
+	metric.Value = value
 
 	body, err := json.Marshal(metric)
+	metric.Delta = nil
+	metric.Value = nil
+	metricPool.Put(metric)
 	if err != nil {
 		return err
 	}
