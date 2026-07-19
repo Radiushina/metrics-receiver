@@ -24,11 +24,18 @@ import (
 	"go.uber.org/zap"
 )
 
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
+)
+
 func main() {
 	runServer()
 }
 
 func runServer() {
+	printBuildInfo()
 	if exitCode, err := parseFlags(); err != nil {
 		if !errors.Is(err, flag.ErrHelp) {
 			if _, printErr := fmt.Fprintln(os.Stderr, err); printErr != nil {

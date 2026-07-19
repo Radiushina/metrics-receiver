@@ -17,11 +17,18 @@ import (
 	"go.uber.org/zap"
 )
 
+var (
+	buildVersion string
+	buildDate    string
+	buildCommit  string
+)
+
 func main() {
 	runAgent()
 }
 
 func runAgent() {
+	printBuildInfo()
 	flags := NewFlags()
 
 	exitCode, err := flags.parse()
