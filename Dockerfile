@@ -5,8 +5,17 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -buildvcs=false -o /bin/server ./cmd/server
-RUN CGO_ENABLED=0 GOOS=linux go build -buildvcs=false -o /bin/agent ./cmd/agent
+
+# Метаданные сборки: docker build --build-arg VERSION=1.2.3 --build-arg COMMIT=abc1234 .
+ARG VERSION=N/A
+ARG DATE=N/A
+ARG COMMIT=N/A
+RUN CGO_ENABLED=0 GOOS=linux go build -buildvcs=false \
+	-ldflags="-X main.buildVersion=${VERSION} -X main.buildDate=${DATE} -X main.buildCommit=${COMMIT}" \
+	-o /bin/server ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -buildvcs=false \
+	-ldflags="-X main.buildVersion=${VERSION} -X main.buildDate=${DATE} -X main.buildCommit=${COMMIT}" \
+	-o /bin/agent ./cmd/agent
 
 FROM alpine:3.20 AS server
 

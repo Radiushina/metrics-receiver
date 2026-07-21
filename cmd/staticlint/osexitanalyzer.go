@@ -2,6 +2,7 @@ package main
 
 import (
 	"go/ast"
+	"go/types"
 
 	"golang.org/x/tools/go/analysis"
 )
@@ -30,15 +31,9 @@ func runOSExit(pass *analysis.Pass) (any, error) {
 				if !ok {
 					return true
 				}
-				sel, ok := call.Fun.(*ast.SelectorExpr)
-				if !ok || sel.Sel.Name != "Exit" {
+				if !isOSExitCall(pass, call) {
 					return true
 				}
-				pkg, ok := sel.X.(*ast.Ident)
-				if !ok || pkg.Name != "os" {
-					return true
-				}
-
 				pass.Reportf(call.Pos(), "не используйте os.Exit в функции main")
 				return true
 			})
@@ -47,4 +42,31 @@ func runOSExit(pass *analysis.Pass) (any, error) {
 	}
 
 	return nil, nil
+}
+
+// isOSExitCall сообщает, является ли вызов функцией os.Exit.
+// Учитывает любой псевдоним импорта (myos "os", o "os", . "os" и т.д.):
+// идентификация идёт по пути пакета объекта из pass.TypesInfo.Uses, а не по имени идентификатора.
+func isOSExitCall(pass *analysis.Pass, call *ast.CallExpr) bool {
+	if pass.TypesInfo == nil {
+		return false
+	}
+
+	var obj types.Object
+	switch fun := call.Fun.(type) {
+	case *ast.SelectorExpr:
+		// myos.Exit / os.Exit — смотрим на идентификатор метода Exit
+		obj = pass.TypesInfo.Uses[fun.Sel]
+	case *ast.Ident:
+		// import . "os" → Exit(1)
+		obj = pass.TypesInfo.Uses[fun]
+	default:
+		return false
+	}
+
+	fn, ok := obj.(*types.Func)
+	if !ok || fn.Pkg() == nil {
+		return false
+	}
+	return fn.Pkg().Path() == "os" && fn.Name() == "Exit"
 }

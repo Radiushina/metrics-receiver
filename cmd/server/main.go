@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Radiushina/metrics-receiver.git/internal/audit"
+	"github.com/Radiushina/metrics-receiver.git/internal/buildinfo"
 	"github.com/Radiushina/metrics-receiver.git/internal/handler"
 	"github.com/Radiushina/metrics-receiver.git/internal/logger"
 	"github.com/Radiushina/metrics-receiver.git/internal/middleware"
@@ -25,9 +26,9 @@ import (
 )
 
 var (
-	buildVersion string
-	buildDate    string
-	buildCommit  string
+	buildVersion = "N/A"
+	buildDate    = "N/A"
+	buildCommit  = "N/A"
 )
 
 func main() {
@@ -35,7 +36,7 @@ func main() {
 }
 
 func runServer() {
-	printBuildInfo()
+	buildinfo.Print(buildVersion, buildDate, buildCommit)
 	if exitCode, err := parseFlags(); err != nil {
 		if !errors.Is(err, flag.ErrHelp) {
 			if _, printErr := fmt.Fprintln(os.Stderr, err); printErr != nil {

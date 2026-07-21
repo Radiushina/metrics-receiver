@@ -1,6 +1,12 @@
 BINARY = metrics-server
 DEFAULT_DATABASE_DSN = postgres://developer:my_pass@localhost:5432/metrics?sslmode=disable
 
+# Метаданные сборки (переопределяются: make build-server VERSION=1.2.3)
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo N/A)
+DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo N/A)
+LDFLAGS = -X main.buildVersion=$(VERSION) -X main.buildDate=$(DATE) -X main.buildCommit=$(COMMIT)
+
 .PHONY: run lint run-server run-agent run-all build build-server build-agent migrate-postgres unit
 
 lint:
@@ -19,10 +25,10 @@ run-all:
 	@bash -c 'set -e; go run ./cmd/server/ & srv=$$!; trap "kill $$srv 2>/dev/null; wait $$srv 2>/dev/null" EXIT INT TERM; sleep 1; go run ./cmd/agent/'
 
 build-server:
-	go build -buildvcs=false -o cmd/server/server ./cmd/server
+	go build -buildvcs=false -ldflags "$(LDFLAGS)" -o cmd/server/server ./cmd/server
 
 build-agent:
-	go build -buildvcs=false -o cmd/agent/agent ./cmd/agent
+	go build -buildvcs=false -ldflags "$(LDFLAGS)" -o cmd/agent/agent ./cmd/agent
 
 migrate-postgres:
 ifneq "$(name)" ""
@@ -141,6 +147,10 @@ test-iter14: build-server build-agent
 		-key="$$KEY_FILE" \
 		-server-port="$$SERVER_PORT" \
 		-source-path="$(CURDIR)"
+
+.PHONY: test-os-exit-analyzer
+test-os-exit-analyzer:
+	go test ./cmd/staticlint/ -run TestOSExitAnalyzer -v
 
 unit:
 	go test ./...

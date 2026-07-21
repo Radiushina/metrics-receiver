@@ -16,19 +16,30 @@ type Pool[T Resetter] struct {
 }
 
 // New создаёт пул. newFn вызывается, когда в пуле нет свободных объектов.
+// Если newFn == nil, Get возвращает zero-value типа T.
 func New[T Resetter](newFn func() T) *Pool[T] {
-	return &Pool[T]{
-		pool: sync.Pool{
-			New: func() any {
-				return newFn()
-			},
-		},
+	p := &Pool[T]{}
+	if newFn != nil {
+		p.pool.New = func() any {
+			return newFn()
+		}
+		return p
 	}
+	p.pool.New = func() any {
+		var zero T
+		return zero
+	}
+	return p
 }
 
 // Get возвращает объект из пула (или новый, если пул пуст).
 func (p *Pool[T]) Get() T {
-	return p.pool.Get().(T)
+	v := p.pool.Get()
+	if v == nil {
+		var zero T
+		return zero
+	}
+	return v.(T)
 }
 
 // Put сбрасывает состояние объекта и возвращает его в пул.

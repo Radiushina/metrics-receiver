@@ -31,6 +31,44 @@ git fetch template && git checkout template/v2 .github
 
 Подробнее про локальный и автоматический запуск читайте в [README автотестов](https://github.com/Yandex-Practicum/go-autotests).
 
+## Информация о сборке
+
+При старте `server` и `agent` печатают в stdout:
+
+```
+Build version: ...
+Build date: ...
+Build commit: ...
+```
+
+По умолчанию значения равны `N/A`. Их можно задать при компиляции через `-ldflags`:
+
+```bash
+go build -ldflags="-X main.buildVersion=1.0.0 -X main.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) -X main.buildCommit=$(git rev-parse --short HEAD)" -o cmd/server/server ./cmd/server
+
+go build -ldflags="-X main.buildVersion=1.0.0 -X main.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ) -X main.buildCommit=$(git rev-parse --short HEAD)" -o cmd/agent/agent ./cmd/agent
+```
+
+Или через Makefile (подставит VERSION/DATE/COMMIT автоматически):
+
+```bash
+make build-server
+make build-agent
+# либо явно:
+make build-server VERSION=1.0.0 COMMIT=abc1234
+```
+
+В Docker:
+
+```bash
+docker build \
+  --build-arg VERSION=1.0.0 \
+  --build-arg DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+  --build-arg COMMIT=$(git rev-parse --short HEAD) \
+  --target server \
+  -t metrics-server .
+```
+
 ## Структура проекта
 
 Приведённая в этом репозитории структура проекта является рекомендуемой, но не обязательной.

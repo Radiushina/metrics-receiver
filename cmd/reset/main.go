@@ -27,12 +27,18 @@ const (
 )
 
 func main() {
+	run()
+}
+
+func run() {
 	root, err := findModuleRoot()
 	if err != nil {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "reset: %v\n", err)
+		os.Exit(1)
 	}
 	if err := generateAll(root); err != nil {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "reset: %v\n", err)
+		os.Exit(1)
 	}
 }
 

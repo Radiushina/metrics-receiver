@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Radiushina/metrics-receiver.git/internal/buildinfo"
 	"github.com/Radiushina/metrics-receiver.git/internal/logger"
 	models "github.com/Radiushina/metrics-receiver.git/internal/model"
 	"github.com/go-resty/resty/v2"
@@ -18,9 +19,9 @@ import (
 )
 
 var (
-	buildVersion string
-	buildDate    string
-	buildCommit  string
+	buildVersion = "N/A"
+	buildDate    = "N/A"
+	buildCommit  = "N/A"
 )
 
 func main() {
@@ -28,7 +29,7 @@ func main() {
 }
 
 func runAgent() {
-	printBuildInfo()
+	buildinfo.Print(buildVersion, buildDate, buildCommit)
 	flags := NewFlags()
 
 	exitCode, err := flags.parse()
