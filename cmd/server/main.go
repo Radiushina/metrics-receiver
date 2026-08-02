@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rsa"
 	"errors"
 	"flag"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/Radiushina/metrics-receiver.git/internal/audit"
 	"github.com/Radiushina/metrics-receiver.git/internal/buildinfo"
+	appcrypto "github.com/Radiushina/metrics-receiver.git/internal/crypto"
 	"github.com/Radiushina/metrics-receiver.git/internal/handler"
 	"github.com/Radiushina/metrics-receiver.git/internal/logger"
 	"github.com/Radiushina/metrics-receiver.git/internal/middleware"
@@ -144,10 +146,20 @@ func run() error {
 
 	h := handler.NewHandler(svc, saver, logg, dbForPing, flagSecretKey, auditPub)
 
+	var privateKey *rsa.PrivateKey
+	if path := strings.TrimSpace(cryptoKey); path != "" {
+		key, err := appcrypto.LoadPrivateKey(path)
+		if err != nil {
+			return fmt.Errorf("load private key: %w", err)
+		}
+		privateKey = key
+		logg.Info("crypto: private key loaded", zap.String("path", path))
+	}
+
 	logg.Info("starting metrics server on",
 		zap.String("address", flagRunAddr))
 	srv := &Server{}
-	mux := NewMux(logg, h)
+	mux := NewMux(logg, h, privateKey)
 
 	if !useDB && flagStoreIntervalSec > 0 && fileStorage != nil {
 		interval := time.Duration(flagStoreIntervalSec) * time.Second
@@ -200,9 +212,10 @@ func run() error {
 }
 
 // NewMux собирает chi-роутер с middleware и регистрирует маршруты метрик.
-func NewMux(logg *zap.Logger, h *handler.Handler) http.Handler {
+func NewMux(logg *zap.Logger, h *handler.Handler, privateKey *rsa.PrivateKey) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Recover(logg))
+	r.Use(appcrypto.DecryptRequest(privateKey))
 	r.Use(middleware.DecompressRequest)
 	r.Use(func(next http.Handler) http.Handler {
 		return logger.LoggingMiddleware(logg, next)

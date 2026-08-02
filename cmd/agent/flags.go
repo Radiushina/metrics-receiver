@@ -17,6 +17,7 @@ type Flags struct {
 	reportInterval int64
 	key            string
 	rateLimit      int64
+	cryptoKey      string
 }
 
 func NewFlags() *Flags {
@@ -26,6 +27,7 @@ func NewFlags() *Flags {
 		reportInterval: 10,
 		key:            "",
 		rateLimit:      1,
+		cryptoKey:      "",
 	}
 }
 
@@ -40,6 +42,7 @@ func (r *Flags) parse() (exitCode int, err error) {
 	fs.Int64Var(&r.reportInterval, "r", r.reportInterval, "report interval: how often to send metrics to the server (seconds)")
 	fs.StringVar(&r.key, "k", r.key, "shared secret for HMAC-SHA256 request body signature (HashSHA256 header); empty disables signing")
 	fs.Int64Var(&r.rateLimit, "l", r.rateLimit, "max number of concurrent outgoing HTTP requests to the server")
+	fs.StringVar(&r.cryptoKey, "crypto-key", r.cryptoKey, "path to public key")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -66,6 +69,9 @@ func (r *Flags) parse() (exitCode int, err error) {
 	}
 	if envCfg.RateLimit != nil {
 		r.rateLimit = *envCfg.RateLimit
+	}
+	if envCfg.CryptoKey != nil {
+		r.cryptoKey = strings.TrimSpace(*envCfg.CryptoKey)
 	}
 
 	return 0, nil

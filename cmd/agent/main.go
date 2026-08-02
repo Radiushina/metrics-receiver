@@ -1,16 +1,19 @@
 package main
 
 import (
+	"crypto/rsa"
 	"errors"
 	"flag"
 	"fmt"
 	"math/rand"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/Radiushina/metrics-receiver.git/internal/buildinfo"
+	appcrypto "github.com/Radiushina/metrics-receiver.git/internal/crypto"
 	"github.com/Radiushina/metrics-receiver.git/internal/logger"
 	models "github.com/Radiushina/metrics-receiver.git/internal/model"
 	"github.com/go-resty/resty/v2"
@@ -60,6 +63,17 @@ func runAgent() {
 	client := resty.New().
 		SetTimeout(5 * time.Second)
 
+	var pubKey *rsa.PublicKey
+	if path := strings.TrimSpace(flags.cryptoKey); path != "" {
+		key, err := appcrypto.LoadPublicKey(path)
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "load public key: %v\n", err)
+			os.Exit(1)
+		}
+		pubKey = key
+		logg.Info("crypto: public key loaded", zap.String("path", path))
+	}
+
 	cpuCount, err := cpu.Counts(true)
 	if err != nil {
 		logg.Sugar().Warnf("gopsutil: cpu count: %v, using 1", err)
@@ -67,7 +81,7 @@ func runAgent() {
 	}
 	gopsutilGaugeNames := models.GopsutilGaugeNames(cpuCount)
 
-	sender := newMetricSender(int(rateLimit), client, secretKey, baseURL, gopsutilGaugeNames)
+	sender := newMetricSender(int(rateLimit), client, secretKey, baseURL, gopsutilGaugeNames, pubKey)
 
 	gaugeValues := make(map[string]float64, len(models.GaugeNames)+len(gopsutilGaugeNames)+1)
 	initGopsutilGauges(gaugeValues, gopsutilGaugeNames)

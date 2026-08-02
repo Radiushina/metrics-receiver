@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rsa"
+
 	"github.com/Radiushina/metrics-receiver.git/internal/agent"
 	models "github.com/Radiushina/metrics-receiver.git/internal/model"
 	"github.com/Radiushina/metrics-receiver.git/internal/pool"
@@ -33,6 +35,7 @@ func newMetricSender(
 	client *resty.Client,
 	secretKey, baseURL string,
 	gopsutilGaugeNames []string,
+	publicKey *rsa.PublicKey,
 ) *metricSender {
 	if workers < 1 {
 		workers = 1
@@ -44,7 +47,7 @@ func newMetricSender(
 	}
 
 	for range workers {
-		go batchWorker(s.jobs, client, secretKey, baseURL)
+		go batchWorker(s.jobs, client, secretKey, baseURL, publicKey)
 	}
 
 	return s
@@ -55,9 +58,10 @@ func batchWorker(
 	jobs <-chan batchJob,
 	client *resty.Client,
 	secretKey, baseURL string,
+	publicKey *rsa.PublicKey,
 ) {
 	for job := range jobs {
-		err := agent.PostMetricsBatch(client, secretKey, baseURL, job.metrics)
+		err := agent.PostMetricsBatch(client, secretKey, baseURL, job.metrics, publicKey)
 		job.done <- err
 	}
 }
