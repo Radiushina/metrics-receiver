@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -18,6 +19,7 @@ type Flags struct {
 	key            string
 	rateLimit      int64
 	cryptoKey      string
+	configPath     string
 }
 
 func NewFlags() *Flags {
@@ -31,12 +33,25 @@ func NewFlags() *Flags {
 	}
 }
 
+// parse загружает конфиг в порядке: defaults → JSON → flags → ENV.
 func (r *Flags) parse() (exitCode int, err error) {
-	var envCfg config.AgentConfig
+	configPath := config.ResolveConfigPath(os.Args[1:])
+	if configPath != "" {
+		fileCfg, err := config.LoadAgentFile(configPath)
+		if err != nil {
+			return 1, err
+		}
+		if err := r.applyFile(fileCfg); err != nil {
+			return 1, err
+		}
+		r.configPath = configPath
+	}
 
 	fs := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 
+	fs.StringVar(&r.configPath, "c", r.configPath, "path to JSON config file")
+	fs.StringVar(&r.configPath, "config", r.configPath, "path to JSON config file")
 	fs.StringVar(&r.runAddr, "a", r.runAddr, "HTTP server host:port (scheme http:// added automatically)")
 	fs.Int64Var(&r.pollInterval, "p", r.pollInterval, "poll interval: how often to read runtime.MemStats (seconds)")
 	fs.Int64Var(&r.reportInterval, "r", r.reportInterval, "report interval: how often to send metrics to the server (seconds)")
@@ -51,10 +66,46 @@ func (r *Flags) parse() (exitCode int, err error) {
 		return 1, err
 	}
 
+	var envCfg config.AgentConfig
 	if err := env.Parse(&envCfg); err != nil {
 		return 1, err
 	}
+	r.applyEnv(envCfg)
 
+	return 0, nil
+}
+
+func (r *Flags) applyFile(cfg config.AgentFileConfig) error {
+	if cfg.Address != nil {
+		r.runAddr = strings.TrimSpace(*cfg.Address)
+	}
+	if cfg.PollInterval != nil {
+		sec, err := config.DurationSeconds(*cfg.PollInterval)
+		if err != nil {
+			return fmt.Errorf("poll_interval: %w", err)
+		}
+		r.pollInterval = sec
+	}
+	if cfg.ReportInterval != nil {
+		sec, err := config.DurationSeconds(*cfg.ReportInterval)
+		if err != nil {
+			return fmt.Errorf("report_interval: %w", err)
+		}
+		r.reportInterval = sec
+	}
+	if cfg.CryptoKey != nil {
+		r.cryptoKey = strings.TrimSpace(*cfg.CryptoKey)
+	}
+	if cfg.Key != nil {
+		r.key = strings.TrimSpace(*cfg.Key)
+	}
+	if cfg.RateLimit != nil {
+		r.rateLimit = *cfg.RateLimit
+	}
+	return nil
+}
+
+func (r *Flags) applyEnv(envCfg config.AgentConfig) {
 	if envCfg.RunAddr != nil {
 		r.runAddr = strings.TrimSpace(*envCfg.RunAddr)
 	}
@@ -73,8 +124,6 @@ func (r *Flags) parse() (exitCode int, err error) {
 	if envCfg.CryptoKey != nil {
 		r.cryptoKey = strings.TrimSpace(*envCfg.CryptoKey)
 	}
-
-	return 0, nil
 }
 
 func (r *Flags) serverBaseURL() string {
