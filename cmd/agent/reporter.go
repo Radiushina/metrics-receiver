@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/rsa"
+	"sync"
 
 	"github.com/Radiushina/metrics-receiver.git/internal/agent"
 	models "github.com/Radiushina/metrics-receiver.git/internal/model"
@@ -26,6 +27,7 @@ type metricSender struct {
 	// пока воркеры обрабатывают предыдущие запросы.
 	jobs               chan batchJob
 	gopsutilGaugeNames []string
+	wg                 sync.WaitGroup
 }
 
 // newMetricSender создаёт пул из workers воркеров и запускает их горутины.
@@ -47,10 +49,18 @@ func newMetricSender(
 	}
 
 	for range workers {
-		go batchWorker(s.jobs, client, secretKey, baseURL, publicKey)
+		s.wg.Go(func() {
+			batchWorker(s.jobs, client, secretKey, baseURL, publicKey)
+		})
 	}
 
 	return s
+}
+
+// Close закрывает очередь задач и ждёт завершения воркеров (в том числе in-flight отправок).
+func (s *metricSender) Close() {
+	close(s.jobs)
+	s.wg.Wait()
 }
 
 // batchWorker читает batchJob из jobs и отправляет весь снимок одним вызовом PostMetricsBatch.

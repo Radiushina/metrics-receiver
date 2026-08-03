@@ -62,7 +62,7 @@ func run() error {
 	defer func() { _ = logg.Sync() }()
 
 	ctx, stop := signal.NotifyContext(context.Background(),
-		syscall.SIGINT, syscall.SIGTERM)
+		syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 	defer stop()
 
 	var dbPool *pgxpool.Pool
@@ -175,9 +175,6 @@ func run() error {
 							zap.Error(err))
 					}
 				case <-ctx.Done():
-					if err := fileStorage.Save(context.Background()); err != nil {
-						logg.Warn("failed to persist metrics on shutdown", zap.Error(err))
-					}
 					return
 				}
 			}
@@ -201,6 +198,15 @@ func run() error {
 
 	shutdownErr := srv.Shutdown(shutdownCtx)
 	runErr := <-errCh
+
+	// Дожидаемся завершения активных HTTP-запросов, затем сохраняем несохранённые метрики.
+	if fileStorage != nil {
+		if err := fileStorage.Save(context.Background()); err != nil {
+			logg.Warn("failed to persist metrics on shutdown", zap.Error(err))
+		} else {
+			logg.Info("metrics persisted on shutdown")
+		}
+	}
 
 	if errors.Is(runErr, http.ErrServerClosed) {
 		runErr = nil
