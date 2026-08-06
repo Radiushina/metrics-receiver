@@ -1,16 +1,22 @@
 package main
 
 import (
+	"context"
+	"crypto/rsa"
 	"errors"
 	"flag"
 	"fmt"
 	"math/rand"
 	"os"
+	"os/signal"
 	"runtime"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/Radiushina/metrics-receiver.git/internal/buildinfo"
+	appcrypto "github.com/Radiushina/metrics-receiver.git/internal/crypto"
 	"github.com/Radiushina/metrics-receiver.git/internal/logger"
 	models "github.com/Radiushina/metrics-receiver.git/internal/model"
 	"github.com/go-resty/resty/v2"
@@ -57,8 +63,23 @@ func runAgent() {
 	}
 	defer func() { _ = logg.Sync() }()
 
+	ctx, stop := signal.NotifyContext(context.Background(),
+		syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	defer stop()
+
 	client := resty.New().
 		SetTimeout(5 * time.Second)
+
+	var pubKey *rsa.PublicKey
+	if path := strings.TrimSpace(flags.cryptoKey); path != "" {
+		key, err := appcrypto.LoadPublicKey(path)
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "load public key: %v\n", err)
+			os.Exit(1)
+		}
+		pubKey = key
+		logg.Info("crypto: public key loaded", zap.String("path", path))
+	}
 
 	cpuCount, err := cpu.Counts(true)
 	if err != nil {
@@ -67,7 +88,8 @@ func runAgent() {
 	}
 	gopsutilGaugeNames := models.GopsutilGaugeNames(cpuCount)
 
-	sender := newMetricSender(int(rateLimit), client, secretKey, baseURL, gopsutilGaugeNames)
+	sender := newMetricSender(int(rateLimit), client, secretKey, baseURL, gopsutilGaugeNames, pubKey)
+	defer sender.Close()
 
 	gaugeValues := make(map[string]float64, len(models.GaugeNames)+len(gopsutilGaugeNames)+1)
 	initGopsutilGauges(gaugeValues, gopsutilGaugeNames)
@@ -90,18 +112,22 @@ func runAgent() {
 
 	// Горутина 1: runtime.MemStats (Alloc, HeapAlloc, …) и RandomValue.
 	wg.Go(func() {
-		runRuntimePollLoop(logg, pollInterval, &ms, &mu, gaugeValues, rnd, &pollCountDelta)
+		runRuntimePollLoop(ctx, logg, pollInterval, &ms, &mu, gaugeValues, rnd, &pollCountDelta)
 	})
 
 	// Горутина 2: отправка метрик на сервер (worker pool, RATE_LIMIT).
 	wg.Go(func() {
-		runReportLoop(logg, reportInterval, &mu, gaugeValues, &pollCountDelta, sender)
+		runReportLoop(ctx, logg, reportInterval, &mu, gaugeValues, &pollCountDelta, sender)
 	})
 
 	// Горутина 3: gopsutil — TotalMemory, FreeMemory, CPUutilization0…N-1.
 	wg.Go(func() {
-		runGopsutilPollLoop(logg, pollInterval, &mu, gaugeValues, cpuCount)
+		runGopsutilPollLoop(ctx, logg, pollInterval, &mu, gaugeValues, cpuCount)
 	})
 
+	<-ctx.Done()
+	logg.Info("shutting down metrics agent")
 	wg.Wait()
+	sender.Close()
+	logg.Info("agent stopped")
 }

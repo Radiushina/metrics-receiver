@@ -27,7 +27,7 @@ func TestNewMux_PostGauge_OK(t *testing.T) {
 	repo := repository.NewMemoryRepo()
 	svc := service.NewService(repo)
 	h := handler.NewHandler(svc, nil, zap.NewNop(), nil, "", nil)
-	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
+	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h, nil))
 	t.Cleanup(ts.Close)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ts.URL+"/update", strings.NewReader(
@@ -56,7 +56,7 @@ func TestNewMux_PostCounter_OK(t *testing.T) {
 	repo := repository.NewMemoryRepo()
 	svc := service.NewService(repo)
 	h := handler.NewHandler(svc, nil, zap.NewNop(), nil, "", nil)
-	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
+	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h, nil))
 	t.Cleanup(ts.Close)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ts.URL+"/update", strings.NewReader(
@@ -85,7 +85,7 @@ func TestNewMux_InvalidType_BadRequest(t *testing.T) {
 	repo := repository.NewMemoryRepo()
 	svc := service.NewService(repo)
 	h := handler.NewHandler(svc, nil, zap.NewNop(), nil, "", nil)
-	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
+	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h, nil))
 	t.Cleanup(ts.Close)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ts.URL+"/update", strings.NewReader(
@@ -114,7 +114,7 @@ func TestNewMux_JSONEndpoints_TrailingSlash_OK(t *testing.T) {
 	repo := repository.NewMemoryRepo()
 	svc := service.NewService(repo)
 	h := handler.NewHandler(svc, nil, zap.NewNop(), nil, "", nil)
-	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
+	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h, nil))
 	t.Cleanup(ts.Close)
 
 	upd, err := http.NewRequestWithContext(ctx, http.MethodPost, ts.URL+"/update/", strings.NewReader(
@@ -160,7 +160,7 @@ func TestNewMux_GzipRequestBody_OK(t *testing.T) {
 	repo := repository.NewMemoryRepo()
 	svc := service.NewService(repo)
 	h := handler.NewHandler(svc, nil, zap.NewNop(), nil, "", nil)
-	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
+	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h, nil))
 	t.Cleanup(ts.Close)
 
 	raw := []byte(`{"id":"HeapAlloc","type":"gauge","value":12.5}`)
@@ -199,7 +199,7 @@ func TestNewMux_GzipResponse_JSON_WhenAccepted(t *testing.T) {
 	repo := repository.NewMemoryRepo()
 	svc := service.NewService(repo)
 	h := handler.NewHandler(svc, nil, zap.NewNop(), nil, "", nil)
-	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
+	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h, nil))
 	t.Cleanup(ts.Close)
 
 	upd, err := http.NewRequestWithContext(ctx, http.MethodPost, ts.URL+"/update", strings.NewReader(
@@ -261,7 +261,7 @@ func TestNewMux_GzipResponse_HTML_WhenAccepted(t *testing.T) {
 	repo := repository.NewMemoryRepo()
 	svc := service.NewService(repo)
 	h := handler.NewHandler(svc, nil, zap.NewNop(), nil, "", nil)
-	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
+	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h, nil))
 	t.Cleanup(ts.Close)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/", nil)
@@ -305,7 +305,7 @@ func TestNewMux_DoesNotGzipTextPlain(t *testing.T) {
 	svc := service.NewService(repo)
 	_ = svc.SetGauge(ctx, "HeapAlloc", 42.5)
 	h := handler.NewHandler(svc, nil, zap.NewNop(), nil, "", nil)
-	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h))
+	ts := httptest.NewServer(main.NewMux(zap.NewNop(), h, nil))
 	t.Cleanup(ts.Close)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/value/gauge/HeapAlloc", nil)

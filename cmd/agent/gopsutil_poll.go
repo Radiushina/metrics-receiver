@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -51,7 +52,9 @@ func pollGopsutilOnce(
 
 // runGopsutilPollLoop — третья горутина агента: периодически собирает метрики через gopsutil.
 // TotalMemory, FreeMemory и CPUutilization0…CPUutilization{N-1} (N = число логических CPU).
+// Останавливается при отмене ctx.
 func runGopsutilPollLoop(
+	ctx context.Context,
 	logg *zap.Logger,
 	interval time.Duration,
 	mu *sync.Mutex,
@@ -61,7 +64,12 @@ func runGopsutilPollLoop(
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		pollGopsutilOnce(logg, mu, gaugeValues, cpuCount)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			pollGopsutilOnce(logg, mu, gaugeValues, cpuCount)
+		}
 	}
 }

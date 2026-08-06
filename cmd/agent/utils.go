@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"math/rand"
 	"runtime"
 	"sync"
@@ -66,7 +67,9 @@ func pollOnce(
 }
 
 // runRuntimePollLoop — первая горутина агента: опрос runtime.MemStats и PollCount.
+// Останавливается при отмене ctx.
 func runRuntimePollLoop(
+	ctx context.Context,
 	logg *zap.Logger,
 	interval time.Duration,
 	ms *runtime.MemStats,
@@ -78,13 +81,20 @@ func runRuntimePollLoop(
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		pollOnce(logg, ms, mu, gaugeValues, rnd, pollCountDelta)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			pollOnce(logg, ms, mu, gaugeValues, rnd, pollCountDelta)
+		}
 	}
 }
 
 // runReportLoop — горутина отправки: снимает метрики и шлёт их на сервер через worker pool.
+// При отмене ctx отправляет финальный снимок накопленных данных и завершается.
 func runReportLoop(
+	ctx context.Context,
 	logg *zap.Logger,
 	interval time.Duration,
 	mu *sync.Mutex,
@@ -100,10 +110,20 @@ func runReportLoop(
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		snapshot, delta := takeReportSnapshot(mu, gaugeValues, pollCountDelta)
-		if err := reportOnce(logg, sender, snapshot, delta); err != nil {
-			atomic.AddInt64(pollCountDelta, delta)
+	for {
+		select {
+		case <-ctx.Done():
+			logg.Info("report: shutdown signal, flushing pending metrics")
+			snapshot, delta := takeReportSnapshot(mu, gaugeValues, pollCountDelta)
+			if err := reportOnce(logg, sender, snapshot, delta); err != nil {
+				logg.Sugar().Warnf("report: final flush failed: %v", err)
+			}
+			return
+		case <-ticker.C:
+			snapshot, delta := takeReportSnapshot(mu, gaugeValues, pollCountDelta)
+			if err := reportOnce(logg, sender, snapshot, delta); err != nil {
+				atomic.AddInt64(pollCountDelta, delta)
+			}
 		}
 	}
 }

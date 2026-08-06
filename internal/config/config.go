@@ -1,4 +1,6 @@
-// Package config описывает конфигурацию сервера и агента из переменных окружения.
+// Package config описывает конфигурацию сервера и агента
+// из флагов, JSON-файла (-c / CONFIG) и переменных окружения.
+// Приоритет: defaults < JSON (если флаг не задан) < flags < ENV.
 package config
 
 // AgentConfig — опциональные значения из переменных окружения для агента метрик.
@@ -19,6 +21,8 @@ type AgentConfig struct {
 	Key *string `env:"KEY"`
 	// RateLimit - количество одновременно исходящих запросов на сервер
 	RateLimit *int64 `env:"RATE_LIMIT"`
+	// CryptoKey - путь до файла с публичным ключем
+	CryptoKey *string `env:"CRYPTO_KEY"`
 }
 
 // ServiceConfig содержит опциональные значения из переменных окружения
@@ -50,4 +54,6 @@ type ServiceConfig struct {
 	AuditFilePath *string `env:"AUDIT_FILE"`
 	// AUDIT_URL - полный URL, по которому отправляются логи аудита. Если параметр не передан, аудит должен быть отключен
 	AuditURL *string `env:"AUDIT_URL"`
+	// CryptoKey - путь до файла с приватным ключем
+	CryptoKey *string `env:"CRYPTO_KEY"`
 }
