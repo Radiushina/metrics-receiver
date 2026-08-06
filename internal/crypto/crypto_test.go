@@ -1,6 +1,7 @@
 package crypto
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
 	"testing"
@@ -17,7 +18,7 @@ func TestEncryptDecrypt_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Encrypt: %v", err)
 	}
-	if bytesEqual(cipher, plain) {
+	if bytes.Equal(cipher, plain) {
 		t.Fatal("ciphertext must differ from plaintext")
 	}
 
@@ -25,7 +26,7 @@ func TestEncryptDecrypt_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Decrypt: %v", err)
 	}
-	if !bytesEqual(got, plain) {
+	if !bytes.Equal(got, plain) {
 		t.Fatalf("Decrypt: got %q, want %q", got, plain)
 	}
 }
@@ -40,16 +41,4 @@ func TestDecrypt_NilKey(t *testing.T) {
 	if _, err := Decrypt(nil, []byte("x")); err == nil {
 		t.Fatal("expected error for nil private key")
 	}
-}
-
-func bytesEqual(a, b []byte) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }

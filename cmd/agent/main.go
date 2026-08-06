@@ -128,5 +128,6 @@ func runAgent() {
 	<-ctx.Done()
 	logg.Info("shutting down metrics agent")
 	wg.Wait()
+	sender.Close()
 	logg.Info("agent stopped")
 }

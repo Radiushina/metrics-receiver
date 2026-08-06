@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
 	"strconv"
@@ -33,33 +34,22 @@ type ServerFileConfig struct {
 	LogLevel      *string `json:"log_level"`
 }
 
-// ResolveConfigPath возвращает путь к JSON-конфигу.
-// Приоритет: флаг -c/-config выше, чем CONFIG из окружения.
-func ResolveConfigPath(args []string) string {
-	path := strings.TrimSpace(os.Getenv("CONFIG"))
-	if fromArgs := configPathFromArgs(args); fromArgs != "" {
-		path = fromArgs
-	}
-	return strings.TrimSpace(path)
+// VisitedFlags возвращает имена флагов, явно переданных в argv (fs.Visit).
+func VisitedFlags(fs *flag.FlagSet) map[string]bool {
+	out := make(map[string]bool)
+	fs.Visit(func(f *flag.Flag) {
+		out[f.Name] = true
+	})
+	return out
 }
 
-func configPathFromArgs(args []string) string {
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch {
-		case a == "-c" || a == "-config" || a == "--config":
-			if i+1 < len(args) {
-				return args[i+1]
-			}
-		case strings.HasPrefix(a, "-c="):
-			return strings.TrimPrefix(a, "-c=")
-		case strings.HasPrefix(a, "-config="):
-			return strings.TrimPrefix(a, "-config=")
-		case strings.HasPrefix(a, "--config="):
-			return strings.TrimPrefix(a, "--config=")
-		}
+// ResolveConfigPath выбирает путь к JSON-конфигу.
+// Если в argv был -c/-config — берётся flagPath, иначе CONFIG из окружения.
+func ResolveConfigPath(flagPath string, visited map[string]bool) string {
+	if visited["c"] || visited["config"] {
+		return strings.TrimSpace(flagPath)
 	}
-	return ""
+	return strings.TrimSpace(os.Getenv("CONFIG"))
 }
 
 // LoadAgentFile читает JSON-конфиг агента.

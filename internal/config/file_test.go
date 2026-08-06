@@ -1,6 +1,7 @@
 package config
 
 import (
+	"flag"
 	"os"
 	"path/filepath"
 	"testing"
@@ -8,7 +9,8 @@ import (
 
 func TestResolveConfigPath_FlagBeatsEnv(t *testing.T) {
 	t.Setenv("CONFIG", "/from/env.json")
-	got := ResolveConfigPath([]string{"-c", "/from/flag.json"})
+	visited := map[string]bool{"c": true}
+	got := ResolveConfigPath("/from/flag.json", visited)
 	if got != "/from/flag.json" {
 		t.Fatalf("got %q, want flag path", got)
 	}
@@ -16,9 +18,26 @@ func TestResolveConfigPath_FlagBeatsEnv(t *testing.T) {
 
 func TestResolveConfigPath_EnvOnly(t *testing.T) {
 	t.Setenv("CONFIG", "/from/env.json")
-	got := ResolveConfigPath(nil)
+	got := ResolveConfigPath("", map[string]bool{})
 	if got != "/from/env.json" {
 		t.Fatalf("got %q, want env path", got)
+	}
+}
+
+func TestVisitedFlags(t *testing.T) {
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	var a, c string
+	fs.StringVar(&a, "a", "default", "")
+	fs.StringVar(&c, "c", "", "")
+	if err := fs.Parse([]string{"-c", "cfg.json"}); err != nil {
+		t.Fatal(err)
+	}
+	visited := VisitedFlags(fs)
+	if !visited["c"] {
+		t.Fatal("expected c visited")
+	}
+	if visited["a"] {
+		t.Fatal("a must not be visited")
 	}
 }
 

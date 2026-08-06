@@ -147,7 +147,7 @@ func run() error {
 	h := handler.NewHandler(svc, saver, logg, dbForPing, flagSecretKey, auditPub)
 
 	var privateKey *rsa.PrivateKey
-	if path := strings.TrimSpace(cryptoKey); path != "" {
+	if path := strings.TrimSpace(flagCryptoKey); path != "" {
 		key, err := appcrypto.LoadPrivateKey(path)
 		if err != nil {
 			return fmt.Errorf("load private key: %w", err)

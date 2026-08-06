@@ -18,8 +18,14 @@ const (
 	defaultFileStoragePath  = "./metrics-db.json"
 	defaultDatabaseDSN      = ""
 	defaultSecretKey        = ""
+	defaultRestore          = false
+	defaultAuditFilePath    = ""
+	defaultAuditURL         = ""
+	defaultCryptoKey        = ""
+	defaultConfigPath       = ""
 )
 
+// Итоговые значения после parseFlags (defaults → flags → JSON для незаданных → ENV).
 var (
 	flagRunAddr          string
 	flagLogLevel         string
@@ -30,42 +36,33 @@ var (
 	flagSecretKey        string
 	flagAuditFilePath    string
 	flagAuditURL         string
-	cryptoKey            string
+	flagCryptoKey        string
 	flagConfigPath       string
 )
 
-// parseFlags загружает конфиг в порядке: defaults → JSON → flags → ENV.
+// parseFlags загружает конфиг в порядке: defaults → flags → JSON (только незаданные флаги) → ENV.
 func parseFlags() (exitCode int, err error) {
-	flagRunAddr = defaultRunAddr
-	flagLogLevel = defaultLogLevel
-	flagStoreIntervalSec = defaultStoreIntervalSec
-	flagFileStoragePath = defaultFileStoragePath
-	flagDatabaseDSN = defaultDatabaseDSN
-	flagSecretKey = defaultSecretKey
-	flagRestore = false
-	flagAuditFilePath = ""
-	flagAuditURL = ""
-	cryptoKey = ""
-	flagConfigPath = ""
-
-	configPath := config.ResolveConfigPath(os.Args[1:])
-	if configPath != "" {
-		fileCfg, err := config.LoadServerFile(configPath)
-		if err != nil {
-			return 1, err
-		}
-		if err := applyFileConfig(fileCfg); err != nil {
-			return 1, err
-		}
-		flagConfigPath = configPath
-	}
-
 	fs := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	registerFlags(fs)
 
 	if exitCode, err := parseCLI(fs); err != nil {
 		return exitCode, err
+	}
+
+	visited := config.VisitedFlags(fs)
+	configPath := config.ResolveConfigPath(flagConfigPath, visited)
+	if configPath != "" {
+		fileCfg, err := config.LoadServerFile(configPath)
+		if err != nil {
+			return 1, err
+		}
+		if err := applyFileConfigIfUnset(fileCfg, visited); err != nil {
+			return 1, err
+		}
+		if !visited["c"] && !visited["config"] {
+			flagConfigPath = configPath
+		}
 	}
 
 	var envCfg config.ServiceConfig
@@ -84,18 +81,18 @@ func parseFlags() (exitCode int, err error) {
 }
 
 func registerFlags(fs *flag.FlagSet) {
-	fs.StringVar(&flagConfigPath, "c", flagConfigPath, "path to JSON config file")
-	fs.StringVar(&flagConfigPath, "config", flagConfigPath, "path to JSON config file")
-	fs.StringVar(&flagRunAddr, "a", flagRunAddr, "address and port to run server")
-	fs.StringVar(&flagLogLevel, "l", flagLogLevel, "log level")
-	fs.IntVar(&flagStoreIntervalSec, "i", flagStoreIntervalSec, "store interval in seconds (0 means synchronous)")
-	fs.StringVar(&flagFileStoragePath, "f", flagFileStoragePath, "file path to persist metrics")
-	fs.BoolVar(&flagRestore, "r", flagRestore, "restore persisted metrics on startup")
-	fs.StringVar(&flagDatabaseDSN, "d", flagDatabaseDSN, "database dsn")
-	fs.StringVar(&flagSecretKey, "k", flagSecretKey, "shared secret for HMAC-SHA256 (HashSHA256 header); empty disables signing")
-	fs.StringVar(&flagAuditFilePath, "audit-file", flagAuditFilePath, "path to audit file")
-	fs.StringVar(&flagAuditURL, "audit-url", flagAuditURL, "url to send audit logs")
-	fs.StringVar(&cryptoKey, "crypto-key", cryptoKey, "path to private key")
+	fs.StringVar(&flagConfigPath, "c", defaultConfigPath, "path to JSON config file")
+	fs.StringVar(&flagConfigPath, "config", defaultConfigPath, "path to JSON config file")
+	fs.StringVar(&flagRunAddr, "a", defaultRunAddr, "address and port to run server")
+	fs.StringVar(&flagLogLevel, "l", defaultLogLevel, "log level")
+	fs.IntVar(&flagStoreIntervalSec, "i", defaultStoreIntervalSec, "store interval in seconds (0 means synchronous)")
+	fs.StringVar(&flagFileStoragePath, "f", defaultFileStoragePath, "file path to persist metrics")
+	fs.BoolVar(&flagRestore, "r", defaultRestore, "restore persisted metrics on startup")
+	fs.StringVar(&flagDatabaseDSN, "d", defaultDatabaseDSN, "database dsn")
+	fs.StringVar(&flagSecretKey, "k", defaultSecretKey, "shared secret for HMAC-SHA256 (HashSHA256 header); empty disables signing")
+	fs.StringVar(&flagAuditFilePath, "audit-file", defaultAuditFilePath, "path to audit file")
+	fs.StringVar(&flagAuditURL, "audit-url", defaultAuditURL, "url to send audit logs")
+	fs.StringVar(&flagCryptoKey, "crypto-key", defaultCryptoKey, "path to private key")
 }
 
 func parseCLI(fs *flag.FlagSet) (exitCode int, err error) {
@@ -108,39 +105,40 @@ func parseCLI(fs *flag.FlagSet) (exitCode int, err error) {
 	return 0, nil
 }
 
-func applyFileConfig(cfg config.ServerFileConfig) error {
-	if cfg.Address != nil {
+// applyFileConfigIfUnset применяет JSON только к опциям, не заданным явно во флагах.
+func applyFileConfigIfUnset(cfg config.ServerFileConfig, visited map[string]bool) error {
+	if cfg.Address != nil && !visited["a"] {
 		flagRunAddr = strings.TrimSpace(*cfg.Address)
 	}
-	if cfg.Restore != nil {
+	if cfg.Restore != nil && !visited["r"] {
 		flagRestore = *cfg.Restore
 	}
-	if cfg.StoreInterval != nil {
+	if cfg.StoreInterval != nil && !visited["i"] {
 		sec, err := config.DurationSeconds(*cfg.StoreInterval)
 		if err != nil {
 			return fmt.Errorf("store_interval: %w", err)
 		}
 		flagStoreIntervalSec = int(sec)
 	}
-	if cfg.StoreFile != nil {
+	if cfg.StoreFile != nil && !visited["f"] {
 		flagFileStoragePath = strings.TrimSpace(*cfg.StoreFile)
 	}
-	if cfg.DatabaseDSN != nil {
+	if cfg.DatabaseDSN != nil && !visited["d"] {
 		flagDatabaseDSN = strings.TrimSpace(*cfg.DatabaseDSN)
 	}
-	if cfg.CryptoKey != nil {
-		cryptoKey = strings.TrimSpace(*cfg.CryptoKey)
+	if cfg.CryptoKey != nil && !visited["crypto-key"] {
+		flagCryptoKey = strings.TrimSpace(*cfg.CryptoKey)
 	}
-	if cfg.Key != nil {
+	if cfg.Key != nil && !visited["k"] {
 		flagSecretKey = strings.TrimSpace(*cfg.Key)
 	}
-	if cfg.AuditFile != nil {
+	if cfg.AuditFile != nil && !visited["audit-file"] {
 		flagAuditFilePath = strings.TrimSpace(*cfg.AuditFile)
 	}
-	if cfg.AuditURL != nil {
+	if cfg.AuditURL != nil && !visited["audit-url"] {
 		flagAuditURL = strings.TrimSpace(*cfg.AuditURL)
 	}
-	if cfg.LogLevel != nil {
+	if cfg.LogLevel != nil && !visited["l"] {
 		flagLogLevel = strings.TrimSpace(*cfg.LogLevel)
 	}
 	return nil
@@ -172,7 +170,7 @@ func applyEnvConfig(envCfg config.ServiceConfig) {
 		flagAuditURL = strings.TrimSpace(*envCfg.AuditURL)
 	}
 	if envCfg.CryptoKey != nil {
-		cryptoKey = strings.TrimSpace(*envCfg.CryptoKey)
+		flagCryptoKey = strings.TrimSpace(*envCfg.CryptoKey)
 	}
 }
 
@@ -189,7 +187,7 @@ func normalize() {
 	flagSecretKey = strings.TrimSpace(flagSecretKey)
 	flagAuditFilePath = strings.TrimSpace(flagAuditFilePath)
 	flagAuditURL = strings.TrimSpace(flagAuditURL)
-	cryptoKey = strings.TrimSpace(cryptoKey)
+	flagCryptoKey = strings.TrimSpace(flagCryptoKey)
 	flagConfigPath = strings.TrimSpace(flagConfigPath)
 }
 

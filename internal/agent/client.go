@@ -136,33 +136,36 @@ func postGzippedJSON(
 	gzBody []byte,
 	publicKey *rsa.PublicKey,
 ) error {
+	body := gzBody
+	headers := map[string]string{
+		"Content-Type":    "application/json",
+		"Accept-Encoding": "gzip",
+	}
+	if key := strings.TrimSpace(secretKey); key != "" {
+		// Подпись считаем по gzip-телу до шифрования — как проверяет сервер после decrypt+decompress.
+		mac := hmac.New(sha256.New, []byte(key))
+		if _, err := mac.Write(gzBody); err != nil {
+			return err
+		}
+		headers["HashSHA256"] = base64.StdEncoding.EncodeToString(mac.Sum(nil))
+	}
+	if publicKey != nil {
+		enc, err := appcrypto.Encrypt(publicKey, gzBody)
+		if err != nil {
+			return err
+		}
+		body = enc
+		headers[appcrypto.ContentEncryptionHeader] = appcrypto.ContentEncryptionValue
+		// На проводе тело — ciphertext; gzip восстановит decrypt-middleware на сервере.
+	} else {
+		headers["Content-Encoding"] = "gzip"
+	}
+
 	return retryAgent(func() (bool, bool, error) {
-		body := gzBody
 		req := client.R().
-			SetHeader("Content-Type", "application/json").
-			SetHeader("Accept-Encoding", "gzip")
+			SetHeaders(headers).
+			SetBody(body)
 
-		if publicKey != nil {
-			enc, err := appcrypto.Encrypt(publicKey, gzBody)
-			if err != nil {
-				return false, false, err
-			}
-			body = enc
-			req.SetHeader(appcrypto.ContentEncryptionHeader, appcrypto.ContentEncryptionValue)
-			// На проводе тело — ciphertext; gzip восстановит decrypt-middleware на сервере.
-		} else {
-			req.SetHeader("Content-Encoding", "gzip")
-		}
-
-		req.SetBody(body)
-		if key := strings.TrimSpace(secretKey); key != "" {
-			// Подпись считаем по gzip-телу до шифрования — как проверяет сервер после decrypt+decompress.
-			mac := hmac.New(sha256.New, []byte(key))
-			if _, err := mac.Write(gzBody); err != nil {
-				return false, false, err
-			}
-			req.SetHeader("HashSHA256", base64.StdEncoding.EncodeToString(mac.Sum(nil)))
-		}
 		resp, err := req.Post(fullURL)
 		if err != nil {
 			return false, isRetriableTransportErr(err), err
