@@ -107,7 +107,7 @@ func TestPostMetric_OK(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	client := resty.New().SetTimeout(5 * time.Second)
-	err := agent.PostGaugeMetric(client, "", srv.URL, "foo", models.Gauge, 1.5, nil)
+	err := agent.PostGaugeMetric(client, "", srv.URL, "127.0.0.1", "foo", models.Gauge, 1.5, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestPostMetricsBatch_OK(t *testing.T) {
 	client := resty.New().SetTimeout(5 * time.Second)
 	v := 1.5
 	d := int64(7)
-	err := agent.PostMetricsBatch(client, "", srv.URL, []models.Metrics{
+	err := agent.PostMetricsBatch(client, "", srv.URL, "127.0.0.1", []models.Metrics{
 		{ID: "foo", MType: models.Gauge, Value: &v},
 		{ID: models.PollCount, MType: models.Counter, Delta: &d},
 	}, nil)
@@ -171,7 +171,7 @@ func TestPostMetricsBatch_Empty_NoRequest(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	client := resty.New().SetTimeout(5 * time.Second)
-	if err := agent.PostMetricsBatch(client, "", srv.URL, nil, nil); err != nil {
+	if err := agent.PostMetricsBatch(client, "", srv.URL, "127.0.0.1", nil, nil); err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
 	if called {
@@ -181,7 +181,7 @@ func TestPostMetricsBatch_Empty_NoRequest(t *testing.T) {
 
 func TestPostMetric_NaN(t *testing.T) {
 	client := resty.New()
-	err := agent.PostGaugeMetric(client, "", "http://unused", "x", models.Gauge, math.NaN(), nil)
+	err := agent.PostGaugeMetric(client, "", "http://unused", "127.0.0.1", "x", models.Gauge, math.NaN(), nil)
 	if err == nil {
 		t.Fatal("expected error for NaN")
 	}
@@ -194,7 +194,7 @@ func TestPostMetric_NonOKStatus(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	client := resty.New().SetTimeout(5 * time.Second)
-	err := agent.PostGaugeMetric(client, "", srv.URL, "a", models.Gauge, 1, nil)
+	err := agent.PostGaugeMetric(client, "", srv.URL, "127.0.0.1", "a", models.Gauge, 1, nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -226,7 +226,7 @@ func TestPostIntMetric_OK(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	client := resty.New().SetTimeout(5 * time.Second)
-	err := agent.PostCounterMetric(client, "", srv.URL, models.PollCount, models.Counter, 7, nil)
+	err := agent.PostCounterMetric(client, "", srv.URL, "127.0.0.1", models.PollCount, models.Counter, 7, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

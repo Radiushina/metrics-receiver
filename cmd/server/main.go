@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -156,10 +157,19 @@ func run() error {
 		logg.Info("crypto: private key loaded", zap.String("path", path))
 	}
 
+	var trustedNet *net.IPNet
+	if flagTrustedSubnet != "" {
+		_, network, err := net.ParseCIDR(flagTrustedSubnet)
+		if err != nil {
+			return fmt.Errorf("trusted subnet: %w", err)
+		}
+		trustedNet = network
+	}
+
 	logg.Info("starting metrics server on",
 		zap.String("address", flagRunAddr))
 	srv := &Server{}
-	mux := NewMux(logg, h, privateKey)
+	mux := NewMux(logg, h, privateKey, trustedNet)
 
 	if !useDB && flagStoreIntervalSec > 0 && fileStorage != nil {
 		interval := time.Duration(flagStoreIntervalSec) * time.Second
@@ -218,9 +228,10 @@ func run() error {
 }
 
 // NewMux собирает chi-роутер с middleware и регистрирует маршруты метрик.
-func NewMux(logg *zap.Logger, h *handler.Handler, privateKey *rsa.PrivateKey) http.Handler {
+func NewMux(logg *zap.Logger, h *handler.Handler, privateKey *rsa.PrivateKey, trustedNet *net.IPNet) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Recover(logg))
+	r.Use(middleware.TrustedSubnet(trustedNet))
 	r.Use(appcrypto.DecryptRequest(privateKey))
 	r.Use(middleware.DecompressRequest)
 	r.Use(func(next http.Handler) http.Handler {

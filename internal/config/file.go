@@ -32,6 +32,7 @@ type ServerFileConfig struct {
 	AuditFile     *string `json:"audit_file"`
 	AuditURL      *string `json:"audit_url"`
 	LogLevel      *string `json:"log_level"`
+	TrustedSubnet *string `json:"trusted_subnet"`
 }
 
 // VisitedFlags возвращает имена флагов, явно переданных в argv (fs.Visit).

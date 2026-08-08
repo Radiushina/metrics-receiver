@@ -35,7 +35,7 @@ type metricSender struct {
 func newMetricSender(
 	workers int,
 	client *resty.Client,
-	secretKey, baseURL string,
+	secretKey, baseURL, localIP string,
 	gopsutilGaugeNames []string,
 	publicKey *rsa.PublicKey,
 ) *metricSender {
@@ -50,7 +50,7 @@ func newMetricSender(
 
 	for range workers {
 		s.wg.Go(func() {
-			batchWorker(s.jobs, client, secretKey, baseURL, publicKey)
+			batchWorker(s.jobs, client, secretKey, baseURL, localIP, publicKey)
 		})
 	}
 
@@ -67,11 +67,11 @@ func (s *metricSender) Close() {
 func batchWorker(
 	jobs <-chan batchJob,
 	client *resty.Client,
-	secretKey, baseURL string,
+	secretKey, baseURL, localIP string,
 	publicKey *rsa.PublicKey,
 ) {
 	for job := range jobs {
-		err := agent.PostMetricsBatch(client, secretKey, baseURL, job.metrics, publicKey)
+		err := agent.PostMetricsBatch(client, secretKey, baseURL, localIP, job.metrics, publicKey)
 		job.done <- err
 	}
 }
