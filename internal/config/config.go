@@ -56,4 +56,6 @@ type ServiceConfig struct {
 	AuditURL *string `env:"AUDIT_URL"`
 	// CryptoKey - путь до файла с приватным ключем
 	CryptoKey *string `env:"CRYPTO_KEY"`
+	// TrustedSubnet - строковое представление бесклассовой адресации (CIDR)
+	TrustedSubnet *string `env:"TRUSTED_SUBNET"`
 }

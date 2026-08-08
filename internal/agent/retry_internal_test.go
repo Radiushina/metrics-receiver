@@ -48,7 +48,7 @@ func TestRetry_PostMetric_TransportFailsThenOK(t *testing.T) {
 		SetTransport(tr).
 		SetTimeout(5 * time.Second)
 
-	err := PostGaugeMetric(client, "", srv.URL, "x", models.Gauge, 1, nil)
+	err := PostGaugeMetric(client, "", srv.URL, "127.0.0.1", "x", models.Gauge, 1, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestRetry_PostMetric_TransportAlwaysFails(t *testing.T) {
 		SetTransport(tr).
 		SetTimeout(5 * time.Second)
 
-	err := PostGaugeMetric(client, "", "http://127.0.0.1:1", "x", models.Gauge, 1, nil)
+	err := PostGaugeMetric(client, "", "http://127.0.0.1:1", "127.0.0.1", "x", models.Gauge, 1, nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -106,7 +106,7 @@ func TestRetry_PostMetricsBatch_Status503ThenOK(t *testing.T) {
 
 	client := resty.New().SetTimeout(5 * time.Second)
 	v := 1.0
-	err := PostMetricsBatch(client, "", srv.URL, []models.Metrics{
+	err := PostMetricsBatch(client, "", srv.URL, "127.0.0.1", []models.Metrics{
 		{ID: "a", MType: models.Gauge, Value: &v},
 	}, nil)
 	if err != nil {

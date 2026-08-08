@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Radiushina/metrics-receiver.git/internal/agent"
 	"github.com/Radiushina/metrics-receiver.git/internal/buildinfo"
 	appcrypto "github.com/Radiushina/metrics-receiver.git/internal/crypto"
 	"github.com/Radiushina/metrics-receiver.git/internal/logger"
@@ -87,8 +88,8 @@ func runAgent() {
 		cpuCount = 1
 	}
 	gopsutilGaugeNames := models.GopsutilGaugeNames(cpuCount)
-
-	sender := newMetricSender(int(rateLimit), client, secretKey, baseURL, gopsutilGaugeNames, pubKey)
+	realIP := agent.LocalIP()
+	sender := newMetricSender(int(rateLimit), client, secretKey, baseURL, realIP, gopsutilGaugeNames, pubKey)
 	defer sender.Close()
 
 	gaugeValues := make(map[string]float64, len(models.GaugeNames)+len(gopsutilGaugeNames)+1)
