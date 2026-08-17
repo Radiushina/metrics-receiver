@@ -20,6 +20,7 @@ const (
 	defaultAgentRateLimit      = int64(1)
 	defaultAgentCryptoKey      = ""
 	defaultAgentConfigPath     = ""
+	defaultAgentGRPCAddr       = ""
 )
 
 type Flags struct {
@@ -30,6 +31,7 @@ type Flags struct {
 	rateLimit      int64
 	cryptoKey      string
 	configPath     string
+	grpcAddr       string
 }
 
 func NewFlags() *Flags {
@@ -41,6 +43,7 @@ func NewFlags() *Flags {
 		rateLimit:      defaultAgentRateLimit,
 		cryptoKey:      defaultAgentCryptoKey,
 		configPath:     defaultAgentConfigPath,
+		grpcAddr:       defaultAgentGRPCAddr,
 	}
 }
 
@@ -59,6 +62,7 @@ func (r *Flags) parse() (exitCode int, err error) {
 	fs.StringVar(&r.key, "k", defaultAgentKey, "shared secret for HMAC-SHA256 request body signature (HashSHA256 header); empty disables signing")
 	fs.Int64Var(&r.rateLimit, "l", defaultAgentRateLimit, "max number of concurrent outgoing HTTP requests to the server")
 	fs.StringVar(&r.cryptoKey, "crypto-key", defaultAgentCryptoKey, "path to public key")
+	fs.StringVar(&r.grpcAddr, "g", defaultAgentGRPCAddr, "gRPC server address (host:port); if set, metrics are sent via gRPC")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -118,6 +122,9 @@ func (r *Flags) applyFileIfUnset(cfg config.AgentFileConfig, visited map[string]
 	if cfg.RateLimit != nil && !visited["l"] {
 		r.rateLimit = *cfg.RateLimit
 	}
+	if cfg.GRPCAddress != nil && !visited["g"] {
+		r.grpcAddr = strings.TrimSpace(*cfg.GRPCAddress)
+	}
 	return nil
 }
 
@@ -139,6 +146,9 @@ func (r *Flags) applyEnv(envCfg config.AgentConfig) {
 	}
 	if envCfg.CryptoKey != nil {
 		r.cryptoKey = strings.TrimSpace(*envCfg.CryptoKey)
+	}
+	if envCfg.GRPCAddr != nil {
+		r.grpcAddr = strings.TrimSpace(*envCfg.GRPCAddr)
 	}
 }
 

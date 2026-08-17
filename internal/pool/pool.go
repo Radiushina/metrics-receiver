@@ -39,7 +39,12 @@ func (p *Pool[T]) Get() T {
 		var zero T
 		return zero
 	}
-	return v.(T)
+	t, ok := v.(T)
+	if !ok {
+		var zero T
+		return zero
+	}
+	return t
 }
 
 // Put сбрасывает состояние объекта и возвращает его в пул.

@@ -18,6 +18,7 @@ import (
 	"github.com/Radiushina/metrics-receiver.git/internal/audit"
 	"github.com/Radiushina/metrics-receiver.git/internal/buildinfo"
 	appcrypto "github.com/Radiushina/metrics-receiver.git/internal/crypto"
+	"github.com/Radiushina/metrics-receiver.git/internal/grpcmetrics"
 	"github.com/Radiushina/metrics-receiver.git/internal/handler"
 	"github.com/Radiushina/metrics-receiver.git/internal/logger"
 	"github.com/Radiushina/metrics-receiver.git/internal/middleware"
@@ -26,6 +27,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 )
 
 var (
@@ -191,13 +193,40 @@ func run() error {
 		}()
 	}
 
-	errCh := make(chan error, 1)
+	httpErrCh := make(chan error, 1)
 	go func() {
-		errCh <- srv.Run(mux)
+		httpErrCh <- srv.Run(mux)
 	}()
 
+	var grpcSrv *grpc.Server
+	var grpcErrCh <-chan error
+	if flagGRPCAddr != "" {
+		lis, err := net.Listen("tcp", flagGRPCAddr)
+		if err != nil {
+			_ = srv.Shutdown(context.Background())
+			<-httpErrCh
+			return fmt.Errorf("grpc listen %s: %w", flagGRPCAddr, err)
+		}
+		grpcSrv = grpcmetrics.NewGRPCServer(
+			grpcmetrics.NewServer(svc, saver, logg, auditPub),
+			trustedNet,
+		)
+		ch := make(chan error, 1)
+		go func() {
+			logg.Info("starting gRPC server", zap.String("address", flagGRPCAddr))
+			ch <- grpcSrv.Serve(lis)
+		}()
+		grpcErrCh = ch
+	}
+
 	select {
-	case err := <-errCh:
+	case err := <-httpErrCh:
+		stopGRPC(grpcSrv)
+		drainErr(grpcErrCh)
+		return err
+	case err := <-grpcErrCh:
+		_ = srv.Shutdown(context.Background())
+		<-httpErrCh
 		return err
 	case <-ctx.Done():
 		logg.Info("shutting down metrics server")
@@ -207,7 +236,9 @@ func run() error {
 	defer cancel()
 
 	shutdownErr := srv.Shutdown(shutdownCtx)
-	runErr := <-errCh
+	stopGRPC(grpcSrv)
+	runErr := <-httpErrCh
+	drainErr(grpcErrCh)
 
 	// Дожидаемся завершения активных HTTP-запросов, затем сохраняем несохранённые метрики.
 	if fileStorage != nil {
@@ -241,6 +272,29 @@ func NewMux(logg *zap.Logger, h *handler.Handler, privateKey *rsa.PrivateKey, tr
 
 	registerRoutes(r, h)
 	return r
+}
+
+func stopGRPC(s *grpc.Server) {
+	if s == nil {
+		return
+	}
+	stopped := make(chan struct{})
+	go func() {
+		s.GracefulStop()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+	case <-time.After(5 * time.Second):
+		s.Stop()
+	}
+}
+
+func drainErr(ch <-chan error) {
+	if ch == nil {
+		return
+	}
+	<-ch
 }
 
 func registerRoutes(r chi.Router, h *handler.Handler) {

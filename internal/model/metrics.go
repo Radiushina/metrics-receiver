@@ -14,8 +14,8 @@ const (
 
 //go:generate go run ../../cmd/reset
 
-// generate:reset
 // Metrics — одна метрика в теле JSON (обновление или запрос значения).
+// generate:reset
 type Metrics struct {
 	// ID — имя метрики (строковый идентификатор).
 	ID string `json:"id"`

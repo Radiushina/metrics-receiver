@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"crypto/rsa"
 	"sync"
 
 	"github.com/Radiushina/metrics-receiver.git/internal/agent"
 	models "github.com/Radiushina/metrics-receiver.git/internal/model"
 	"github.com/Radiushina/metrics-receiver.git/internal/pool"
+	pb "github.com/Radiushina/metrics-receiver.git/internal/proto"
 	"github.com/go-resty/resty/v2"
+	"google.golang.org/grpc"
 )
 
 // metricsPool переиспользует *models.Metrics между циклами отправки батча.
@@ -15,30 +18,60 @@ var metricsPool = pool.New(func() *models.Metrics {
 	return &models.Metrics{}
 })
 
-// batchJob — задача воркеру: отправить один пакет метрик на POST /updates/.
+// batchJob — задача воркеру: отправить один пакет метрик.
 type batchJob struct {
 	metrics []models.Metrics
-	done    chan error // воркер передаёт сюда результат PostMetricsBatch
+	done    chan error
+}
+
+// batchPoster отправляет пакет метрик на сервер (HTTP или gRPC).
+type batchPoster interface {
+	PostBatch(metrics []models.Metrics) error
+	Close() error
+}
+
+type httpPoster struct {
+	client    *resty.Client
+	secretKey string
+	baseURL   string
+	publicKey *rsa.PublicKey
+}
+
+func (p *httpPoster) PostBatch(metrics []models.Metrics) error {
+	return agent.PostMetricsBatch(p.client, p.secretKey, p.baseURL, metrics, p.publicKey)
+}
+
+func (*httpPoster) Close() error { return nil }
+
+type grpcPoster struct {
+	conn    *grpc.ClientConn
+	client  pb.MetricsClient
+	localIP string
+}
+
+func (p *grpcPoster) PostBatch(metrics []models.Metrics) error {
+	return agent.PostMetricsBatchGRPC(context.Background(), p.client, p.localIP, metrics)
+}
+
+func (p *grpcPoster) Close() error {
+	if p.conn == nil {
+		return nil
+	}
+	return p.conn.Close()
 }
 
 // metricSender — пул воркеров (worker pool) для исходящих батч-запросов.
 type metricSender struct {
-	// jobs — очередь батчей; буфер = workers, чтобы отправитель не блокировался,
-	// пока воркеры обрабатывают предыдущие запросы.
 	jobs               chan batchJob
 	gopsutilGaugeNames []string
+	poster             batchPoster
 	wg                 sync.WaitGroup
+	closeOnce          sync.Once
 }
 
 // newMetricSender создаёт пул из workers воркеров и запускает их горутины.
-// workers (RATE_LIMIT / -l) — сколько батч-запросов к /updates/ может выполняться одновременно.
-func newMetricSender(
-	workers int,
-	client *resty.Client,
-	secretKey, baseURL, localIP string,
-	gopsutilGaugeNames []string,
-	publicKey *rsa.PublicKey,
-) *metricSender {
+// workers (RATE_LIMIT / -l) — сколько батч-запросов может выполняться одновременно.
+func newMetricSender(workers int, poster batchPoster, gopsutilGaugeNames []string) *metricSender {
 	if workers < 1 {
 		workers = 1
 	}
@@ -46,33 +79,32 @@ func newMetricSender(
 	s := &metricSender{
 		jobs:               make(chan batchJob, workers),
 		gopsutilGaugeNames: gopsutilGaugeNames,
+		poster:             poster,
 	}
 
 	for range workers {
 		s.wg.Go(func() {
-			batchWorker(s.jobs, client, secretKey, baseURL, localIP, publicKey)
+			batchWorker(s.jobs, poster)
 		})
 	}
 
 	return s
 }
 
-// Close закрывает очередь задач и ждёт завершения воркеров (в том числе in-flight отправок).
+// Close закрывает очередь задач, ждёт воркеров и освобождает соединение poster.
 func (s *metricSender) Close() {
-	close(s.jobs)
-	s.wg.Wait()
+	s.closeOnce.Do(func() {
+		close(s.jobs)
+		s.wg.Wait()
+		if s.poster != nil {
+			_ = s.poster.Close()
+		}
+	})
 }
 
-// batchWorker читает batchJob из jobs и отправляет весь снимок одним вызовом PostMetricsBatch.
-func batchWorker(
-	jobs <-chan batchJob,
-	client *resty.Client,
-	secretKey, baseURL, localIP string,
-	publicKey *rsa.PublicKey,
-) {
+func batchWorker(jobs <-chan batchJob, poster batchPoster) {
 	for job := range jobs {
-		err := agent.PostMetricsBatch(client, secretKey, baseURL, localIP, job.metrics, publicKey)
-		job.done <- err
+		job.done <- poster.PostBatch(job.metrics)
 	}
 }
 
@@ -117,7 +149,6 @@ func (s *metricSender) buildMetricsFromSnapshot(snapshot map[string]float64, del
 }
 
 // sendSnapshot ставит в очередь один батч со всеми метриками снимка и ждёт его отправки.
-// За цикл отчёта — один HTTP-запрос на /updates/; RATE_LIMIT ограничивает число одновременных батчей.
 func (s *metricSender) sendSnapshot(snapshot map[string]float64, delta int64) error {
 	metrics := s.buildMetricsFromSnapshot(snapshot, delta)
 

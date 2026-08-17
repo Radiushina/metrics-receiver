@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"errors"
 )
 
 // AgentFileConfig — JSON-конфиг агента (-c / CONFIG).
@@ -18,6 +20,7 @@ type AgentFileConfig struct {
 	CryptoKey      *string `json:"crypto_key"`
 	Key            *string `json:"key"`
 	RateLimit      *int64  `json:"rate_limit"`
+	GRPCAddress    *string `json:"grpc_address"`
 }
 
 // ServerFileConfig — JSON-конфиг сервера (-c / CONFIG).
@@ -33,6 +36,7 @@ type ServerFileConfig struct {
 	AuditURL      *string `json:"audit_url"`
 	LogLevel      *string `json:"log_level"`
 	TrustedSubnet *string `json:"trusted_subnet"`
+	GRPCAddress   *string `json:"grpc_address"`
 }
 
 // VisitedFlags возвращает имена флагов, явно переданных в argv (fs.Visit).
@@ -86,7 +90,7 @@ func loadJSON(path string, dst any) error {
 func DurationSeconds(s string) (int64, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return 0, fmt.Errorf("empty duration")
+		return 0, errors.New("empty duration")
 	}
 	if d, err := time.ParseDuration(s); err == nil {
 		return int64(d / time.Second), nil

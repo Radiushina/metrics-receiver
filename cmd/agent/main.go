@@ -68,11 +68,15 @@ func runAgent() {
 		syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 	defer stop()
 
+	realIP := agent.LocalIP()
 	client := resty.New().
 		SetTimeout(5 * time.Second)
+	if realIP != "" {
+		client.SetHeader("X-Real-IP", realIP)
+	}
 
 	var pubKey *rsa.PublicKey
-	if path := strings.TrimSpace(flags.cryptoKey); path != "" {
+	if path := strings.TrimSpace(flags.cryptoKey); path != "" && strings.TrimSpace(flags.grpcAddr) == "" {
 		key, err := appcrypto.LoadPublicKey(path)
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "load public key: %v\n", err)
@@ -88,8 +92,13 @@ func runAgent() {
 		cpuCount = 1
 	}
 	gopsutilGaugeNames := models.GopsutilGaugeNames(cpuCount)
-	realIP := agent.LocalIP()
-	sender := newMetricSender(int(rateLimit), client, secretKey, baseURL, realIP, gopsutilGaugeNames, pubKey)
+
+	poster, err := newBatchPoster(flags, client, secretKey, baseURL, realIP, pubKey, logg)
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "metrics transport: %v\n", err)
+		os.Exit(1)
+	}
+	sender := newMetricSender(int(rateLimit), poster, gopsutilGaugeNames)
 	defer sender.Close()
 
 	gaugeValues := make(map[string]float64, len(models.GaugeNames)+len(gopsutilGaugeNames)+1)
@@ -131,4 +140,28 @@ func runAgent() {
 	wg.Wait()
 	sender.Close()
 	logg.Info("agent stopped")
+}
+
+func newBatchPoster(
+	flags *Flags,
+	client *resty.Client,
+	secretKey, baseURL, realIP string,
+	pubKey *rsa.PublicKey,
+	logg *zap.Logger,
+) (batchPoster, error) {
+	if grpcAddr := strings.TrimSpace(flags.grpcAddr); grpcAddr != "" {
+		conn, grpcClient, err := agent.DialMetrics(grpcAddr)
+		if err != nil {
+			return nil, fmt.Errorf("dial gRPC: %w", err)
+		}
+		logg.Info("agent: sending metrics via gRPC", zap.String("address", grpcAddr))
+		return &grpcPoster{conn: conn, client: grpcClient, localIP: realIP}, nil
+	}
+	logg.Info("agent: sending metrics via HTTP", zap.String("address", baseURL))
+	return &httpPoster{
+		client:    client,
+		secretKey: secretKey,
+		baseURL:   baseURL,
+		publicKey: pubKey,
+	}, nil
 }

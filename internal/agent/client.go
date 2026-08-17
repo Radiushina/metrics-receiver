@@ -31,7 +31,7 @@ var metricPool = pool.New(func() *models.Metrics {
 // PostGaugeMetric отправляет на сервер значение метрики типа gauge.
 func PostGaugeMetric(
 	client *resty.Client,
-	secretKey, baseURL, localIP, name string,
+	secretKey, baseURL, name string,
 	metricType models.MetricType,
 	value float64,
 	publicKey *rsa.PublicKey,
@@ -39,18 +39,18 @@ func PostGaugeMetric(
 	if math.IsNaN(value) || math.IsInf(value, 0) {
 		return fmt.Errorf("invalid float value: %v", value)
 	}
-	return basePostMetric(client, secretKey, baseURL, localIP, name, metricType, &value, nil, publicKey)
+	return basePostMetric(client, secretKey, baseURL, name, metricType, &value, nil, publicKey)
 }
 
 // PostCounterMetric отправляет на сервер приращение (delta) метрики типа counter.
 func PostCounterMetric(
 	client *resty.Client,
-	secretKey, baseURL, localIP, name string,
+	secretKey, baseURL, name string,
 	metricType models.MetricType,
 	delta int64,
 	publicKey *rsa.PublicKey,
 ) error {
-	return basePostMetric(client, secretKey, baseURL, localIP, name, metricType, nil, &delta, publicKey)
+	return basePostMetric(client, secretKey, baseURL, name, metricType, nil, &delta, publicKey)
 }
 
 // PostMetricsBatch отправляет пакет метрик на сервер одним запросом.
@@ -58,7 +58,7 @@ func PostCounterMetric(
 // отправляется методом POST на /updates/.
 func PostMetricsBatch(
 	client *resty.Client,
-	secretKey, baseURL, localIP string,
+	secretKey, baseURL string,
 	metrics []models.Metrics,
 	publicKey *rsa.PublicKey,
 ) error {
@@ -94,12 +94,12 @@ func PostMetricsBatch(
 	if err != nil {
 		return err
 	}
-	return postGzippedMetricsBatch(client, secretKey, baseURL, localIP, gzBody, publicKey)
+	return postGzippedMetricsBatch(client, secretKey, baseURL, gzBody, publicKey)
 }
 
 func basePostMetric(
 	client *resty.Client,
-	secretKey, baseURL, localIP, name string,
+	secretKey, baseURL, name string,
 	metricType models.MetricType,
 	value *float64,
 	delta *int64,
@@ -128,12 +128,12 @@ func basePostMetric(
 		return err
 	}
 
-	return postGzippedMetric(client, secretKey, baseURL, localIP, gzBody, publicKey)
+	return postGzippedMetric(client, secretKey, baseURL, gzBody, publicKey)
 }
 
 func postGzippedJSON(
 	client *resty.Client,
-	secretKey, fullURL, localIP string,
+	secretKey, fullURL string,
 	gzBody []byte,
 	publicKey *rsa.PublicKey,
 ) error {
@@ -141,7 +141,6 @@ func postGzippedJSON(
 	headers := map[string]string{
 		"Content-Type":    "application/json",
 		"Accept-Encoding": "gzip",
-		"X-Real-IP":       localIP,
 	}
 	if key := strings.TrimSpace(secretKey); key != "" {
 		// Подпись считаем по gzip-телу до шифрования — как проверяет сервер после decrypt+decompress.
@@ -203,7 +202,7 @@ func validateMetricArgs(
 
 func postGzippedMetric(
 	client *resty.Client,
-	secretKey, baseURL, localIP string,
+	secretKey, baseURL string,
 	gzBody []byte,
 	publicKey *rsa.PublicKey,
 ) error {
@@ -211,17 +210,17 @@ func postGzippedMetric(
 	if err != nil {
 		return err
 	}
-	return postGzippedJSON(client, secretKey, fullURL, localIP, gzBody, publicKey)
+	return postGzippedJSON(client, secretKey, fullURL, gzBody, publicKey)
 }
 
 func postGzippedMetricsBatch(
 	client *resty.Client,
-	secretKey, baseURL, localIP string,
+	secretKey, baseURL string,
 	gzBody []byte,
 	publicKey *rsa.PublicKey,
 ) error {
 	fullURL := strings.TrimRight(baseURL, "/") + "/updates/"
-	return postGzippedJSON(client, secretKey, fullURL, localIP, gzBody, publicKey)
+	return postGzippedJSON(client, secretKey, fullURL, gzBody, publicKey)
 }
 
 func gzipBytes(src []byte) ([]byte, error) {
@@ -237,6 +236,8 @@ func gzipBytes(src []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// LocalIP возвращает IPv4-адрес хоста агента (первый не loopback).
+// Пустая строка — если адрес определить не удалось.
 func LocalIP() string {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {

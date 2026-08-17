@@ -3,8 +3,8 @@ package audit
 
 //go:generate go run ../../cmd/reset
 
-// generate:reset
 // Event — запись аудита после успешного приёма метрик.
+// generate:reset
 type Event struct {
 	// TS — Unix-время события (секунды).
 	TS int64 `json:"ts"`

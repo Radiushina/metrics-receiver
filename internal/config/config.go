@@ -23,6 +23,8 @@ type AgentConfig struct {
 	RateLimit *int64 `env:"RATE_LIMIT"`
 	// CryptoKey - путь до файла с публичным ключем
 	CryptoKey *string `env:"CRYPTO_KEY"`
+	// GRPCAddr — адрес gRPC-сервера (host:port). Если задан, агент шлёт метрики по gRPC.
+	GRPCAddr *string `env:"GRPC_ADDRESS"`
 }
 
 // ServiceConfig содержит опциональные значения из переменных окружения
@@ -58,4 +60,6 @@ type ServiceConfig struct {
 	CryptoKey *string `env:"CRYPTO_KEY"`
 	// TrustedSubnet - строковое представление бесклассовой адресации (CIDR)
 	TrustedSubnet *string `env:"TRUSTED_SUBNET"`
+	// GRPCAddr — адрес, на котором слушает gRPC-сервер. Пустое значение отключает gRPC.
+	GRPCAddr *string `env:"GRPC_ADDRESS"`
 }
