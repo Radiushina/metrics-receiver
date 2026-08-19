@@ -23,6 +23,8 @@ const (
 	defaultAuditURL         = ""
 	defaultCryptoKey        = ""
 	defaultConfigPath       = ""
+	defaultTrustedSubnet    = ""
+	defaultGRPCAddr         = ""
 )
 
 // Итоговые значения после parseFlags (defaults → flags → JSON для незаданных → ENV).
@@ -38,6 +40,8 @@ var (
 	flagAuditURL         string
 	flagCryptoKey        string
 	flagConfigPath       string
+	flagTrustedSubnet    string
+	flagGRPCAddr         string
 )
 
 // parseFlags загружает конфиг в порядке: defaults → flags → JSON (только незаданные флаги) → ENV.
@@ -93,6 +97,8 @@ func registerFlags(fs *flag.FlagSet) {
 	fs.StringVar(&flagAuditFilePath, "audit-file", defaultAuditFilePath, "path to audit file")
 	fs.StringVar(&flagAuditURL, "audit-url", defaultAuditURL, "url to send audit logs")
 	fs.StringVar(&flagCryptoKey, "crypto-key", defaultCryptoKey, "path to private key")
+	fs.StringVar(&flagTrustedSubnet, "t", defaultTrustedSubnet, "trusted subnet")
+	fs.StringVar(&flagGRPCAddr, "g", defaultGRPCAddr, "gRPC listen address; empty disables gRPC")
 }
 
 func parseCLI(fs *flag.FlagSet) (exitCode int, err error) {
@@ -141,6 +147,12 @@ func applyFileConfigIfUnset(cfg config.ServerFileConfig, visited map[string]bool
 	if cfg.LogLevel != nil && !visited["l"] {
 		flagLogLevel = strings.TrimSpace(*cfg.LogLevel)
 	}
+	if cfg.TrustedSubnet != nil && !visited["t"] {
+		flagTrustedSubnet = strings.TrimSpace(*cfg.TrustedSubnet)
+	}
+	if cfg.GRPCAddress != nil && !visited["g"] {
+		flagGRPCAddr = strings.TrimSpace(*cfg.GRPCAddress)
+	}
 	return nil
 }
 
@@ -172,6 +184,12 @@ func applyEnvConfig(envCfg config.ServiceConfig) {
 	if envCfg.CryptoKey != nil {
 		flagCryptoKey = strings.TrimSpace(*envCfg.CryptoKey)
 	}
+	if envCfg.TrustedSubnet != nil {
+		flagTrustedSubnet = strings.TrimSpace(*envCfg.TrustedSubnet)
+	}
+	if envCfg.GRPCAddr != nil {
+		flagGRPCAddr = strings.TrimSpace(*envCfg.GRPCAddr)
+	}
 }
 
 func applyEnvLogLevel() {
@@ -189,6 +207,8 @@ func normalize() {
 	flagAuditURL = strings.TrimSpace(flagAuditURL)
 	flagCryptoKey = strings.TrimSpace(flagCryptoKey)
 	flagConfigPath = strings.TrimSpace(flagConfigPath)
+	flagTrustedSubnet = strings.TrimSpace(flagTrustedSubnet)
+	flagGRPCAddr = strings.TrimSpace(flagGRPCAddr)
 }
 
 func validate() error {

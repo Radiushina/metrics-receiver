@@ -86,6 +86,9 @@ func TestPostMetric_OK(t *testing.T) {
 		if r.Header.Get("Content-Encoding") != "gzip" {
 			t.Errorf("Content-Encoding %q", r.Header.Get("Content-Encoding"))
 		}
+		if r.Header.Get("X-Real-IP") != "10.0.0.1" {
+			t.Errorf("X-Real-IP %q", r.Header.Get("X-Real-IP"))
+		}
 		if r.URL.Path != "/update" {
 			t.Errorf("path %s", r.URL.Path)
 		}
@@ -106,7 +109,9 @@ func TestPostMetric_OK(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	client := resty.New().SetTimeout(5 * time.Second)
+	client := resty.New().
+		SetTimeout(5*time.Second).
+		SetHeader("X-Real-IP", "10.0.0.1")
 	err := agent.PostGaugeMetric(client, "", srv.URL, "foo", models.Gauge, 1.5, nil)
 	if err != nil {
 		t.Fatal(err)

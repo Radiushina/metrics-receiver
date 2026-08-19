@@ -36,6 +36,7 @@ linters:
           disabled: true
 
   exclusions:
+    generated: lax
     rules:
       - linters:
           - revive

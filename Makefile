@@ -30,6 +30,10 @@ build-server:
 build-agent:
 	go build -buildvcs=false -ldflags "$(LDFLAGS)" -o cmd/agent/agent ./cmd/agent
 
+.PHONY: proto
+proto:
+	cd internal/proto && protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative metrics.proto
+
 migrate-postgres:
 ifneq "$(name)" ""
 	migrate create -ext sql -dir migrations $(name)

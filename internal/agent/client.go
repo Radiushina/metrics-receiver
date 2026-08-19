@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -233,4 +234,23 @@ func gzipBytes(src []byte) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// LocalIP возвращает IPv4-адрес хоста агента (первый не loopback).
+// Пустая строка — если адрес определить не удалось.
+func LocalIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, addr := range addrs {
+		ipNet, ok := addr.(*net.IPNet)
+		if !ok || ipNet.IP.IsLoopback() {
+			continue
+		}
+		if ip4 := ipNet.IP.To4(); ip4 != nil {
+			return ip4.String()
+		}
+	}
+	return ""
 }

@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,6 +18,7 @@ import (
 	"github.com/Radiushina/metrics-receiver.git/internal/audit"
 	"github.com/Radiushina/metrics-receiver.git/internal/buildinfo"
 	appcrypto "github.com/Radiushina/metrics-receiver.git/internal/crypto"
+	"github.com/Radiushina/metrics-receiver.git/internal/grpcmetrics"
 	"github.com/Radiushina/metrics-receiver.git/internal/handler"
 	"github.com/Radiushina/metrics-receiver.git/internal/logger"
 	"github.com/Radiushina/metrics-receiver.git/internal/middleware"
@@ -25,6 +27,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 )
 
 var (
@@ -156,10 +159,19 @@ func run() error {
 		logg.Info("crypto: private key loaded", zap.String("path", path))
 	}
 
+	var trustedNet *net.IPNet
+	if flagTrustedSubnet != "" {
+		_, network, err := net.ParseCIDR(flagTrustedSubnet)
+		if err != nil {
+			return fmt.Errorf("trusted subnet: %w", err)
+		}
+		trustedNet = network
+	}
+
 	logg.Info("starting metrics server on",
 		zap.String("address", flagRunAddr))
 	srv := &Server{}
-	mux := NewMux(logg, h, privateKey)
+	mux := NewMux(logg, h, privateKey, trustedNet)
 
 	if !useDB && flagStoreIntervalSec > 0 && fileStorage != nil {
 		interval := time.Duration(flagStoreIntervalSec) * time.Second
@@ -181,13 +193,40 @@ func run() error {
 		}()
 	}
 
-	errCh := make(chan error, 1)
+	httpErrCh := make(chan error, 1)
 	go func() {
-		errCh <- srv.Run(mux)
+		httpErrCh <- srv.Run(mux)
 	}()
 
+	var grpcSrv *grpc.Server
+	var grpcErrCh <-chan error
+	if flagGRPCAddr != "" {
+		lis, err := net.Listen("tcp", flagGRPCAddr)
+		if err != nil {
+			shutdownHTTP(srv, 5*time.Second)
+			<-httpErrCh
+			return fmt.Errorf("grpc listen %s: %w", flagGRPCAddr, err)
+		}
+		grpcSrv = grpcmetrics.NewGRPCServer(
+			grpcmetrics.NewServer(svc, saver, logg, auditPub),
+			trustedNet,
+		)
+		ch := make(chan error, 1)
+		go func() {
+			logg.Info("starting gRPC server", zap.String("address", flagGRPCAddr))
+			ch <- grpcSrv.Serve(lis)
+		}()
+		grpcErrCh = ch
+	}
+
 	select {
-	case err := <-errCh:
+	case err := <-httpErrCh:
+		stopGRPC(grpcSrv)
+		drainErr(grpcErrCh)
+		return err
+	case err := <-grpcErrCh:
+		shutdownHTTP(srv, 5*time.Second)
+		<-httpErrCh
 		return err
 	case <-ctx.Done():
 		logg.Info("shutting down metrics server")
@@ -197,7 +236,9 @@ func run() error {
 	defer cancel()
 
 	shutdownErr := srv.Shutdown(shutdownCtx)
-	runErr := <-errCh
+	stopGRPC(grpcSrv)
+	runErr := <-httpErrCh
+	drainErr(grpcErrCh)
 
 	// Дожидаемся завершения активных HTTP-запросов, затем сохраняем несохранённые метрики.
 	if fileStorage != nil {
@@ -218,9 +259,10 @@ func run() error {
 }
 
 // NewMux собирает chi-роутер с middleware и регистрирует маршруты метрик.
-func NewMux(logg *zap.Logger, h *handler.Handler, privateKey *rsa.PrivateKey) http.Handler {
+func NewMux(logg *zap.Logger, h *handler.Handler, privateKey *rsa.PrivateKey, trustedNet *net.IPNet) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Recover(logg))
+	r.Use(middleware.TrustedSubnet(trustedNet))
 	r.Use(appcrypto.DecryptRequest(privateKey))
 	r.Use(middleware.DecompressRequest)
 	r.Use(func(next http.Handler) http.Handler {
@@ -230,6 +272,35 @@ func NewMux(logg *zap.Logger, h *handler.Handler, privateKey *rsa.PrivateKey) ht
 
 	registerRoutes(r, h)
 	return r
+}
+
+func shutdownHTTP(srv *Server, timeout time.Duration) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	_ = srv.Shutdown(ctx)
+}
+
+func stopGRPC(s *grpc.Server) {
+	if s == nil {
+		return
+	}
+	stopped := make(chan struct{})
+	go func() {
+		s.GracefulStop()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+	case <-time.After(5 * time.Second):
+		s.Stop()
+	}
+}
+
+func drainErr(ch <-chan error) {
+	if ch == nil {
+		return
+	}
+	<-ch
 }
 
 func registerRoutes(r chi.Router, h *handler.Handler) {

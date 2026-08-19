@@ -33,5 +33,8 @@ func (s *Server) Run(handler http.Handler) error {
 
 // Shutdown корректно останавливает HTTP-сервер, дожидаясь завершения активных запросов.
 func (s *Server) Shutdown(ctx context.Context) error {
+	if s.httpServer == nil {
+		return nil
+	}
 	return s.httpServer.Shutdown(ctx)
 }
