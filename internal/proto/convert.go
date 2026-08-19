@@ -47,14 +47,26 @@ func FromProto(in []*Metric) ([]models.Metrics, error) {
 		}
 		switch m.GetType() {
 		case Metric_GAUGE:
-			v := m.GetValue()
-			out = append(out, models.Metrics{ID: m.GetId(), MType: models.Gauge, Value: &v})
+			out = append(out, gaugeFromProto(m))
 		case Metric_COUNTER:
-			d := m.GetDelta()
-			out = append(out, models.Metrics{ID: m.GetId(), MType: models.Counter, Delta: &d})
+			out = append(out, counterFromProto(m))
 		default:
 			return nil, fmt.Errorf("invalid metric type: %v", m.GetType())
 		}
 	}
 	return out, nil
 }
+
+func gaugeFromProto(m *Metric) models.Metrics {
+	v := m.GetValue()
+	return models.Metrics{ID: m.GetId(), MType: models.Gauge, Value: float64Ptr(v)}
+}
+
+func counterFromProto(m *Metric) models.Metrics {
+	d := m.GetDelta()
+	return models.Metrics{ID: m.GetId(), MType: models.Counter, Delta: int64Ptr(d)}
+}
+
+func float64Ptr(v float64) *float64 { return &v }
+
+func int64Ptr(v int64) *int64 { return &v }

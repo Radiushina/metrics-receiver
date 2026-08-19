@@ -203,7 +203,7 @@ func run() error {
 	if flagGRPCAddr != "" {
 		lis, err := net.Listen("tcp", flagGRPCAddr)
 		if err != nil {
-			_ = srv.Shutdown(context.Background())
+			shutdownHTTP(srv, 5*time.Second)
 			<-httpErrCh
 			return fmt.Errorf("grpc listen %s: %w", flagGRPCAddr, err)
 		}
@@ -225,7 +225,7 @@ func run() error {
 		drainErr(grpcErrCh)
 		return err
 	case err := <-grpcErrCh:
-		_ = srv.Shutdown(context.Background())
+		shutdownHTTP(srv, 5*time.Second)
 		<-httpErrCh
 		return err
 	case <-ctx.Done():
@@ -272,6 +272,12 @@ func NewMux(logg *zap.Logger, h *handler.Handler, privateKey *rsa.PrivateKey, tr
 
 	registerRoutes(r, h)
 	return r
+}
+
+func shutdownHTTP(srv *Server, timeout time.Duration) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	_ = srv.Shutdown(ctx)
 }
 
 func stopGRPC(s *grpc.Server) {

@@ -37,11 +37,11 @@ func PostMetricsBatchGRPC(ctx context.Context, client pb.MetricsClient, localIP 
 	req := &pb.UpdateMetricsRequest{Metrics: pb.ToProto(metrics)}
 	return retryAgent(func() (bool, bool, error) {
 		callCtx, cancel := context.WithTimeout(ctx, grpcRequestTimeout)
-		defer cancel()
 		if ip := strings.TrimSpace(localIP); ip != "" {
 			callCtx = metadata.NewOutgoingContext(callCtx, metadata.Pairs(pb.RealIPMetadataKey, ip))
 		}
 		_, err := client.UpdateMetrics(callCtx, req)
+		cancel()
 		if err == nil {
 			return true, false, nil
 		}

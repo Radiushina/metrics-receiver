@@ -76,14 +76,18 @@ func runAgent() {
 	}
 
 	var pubKey *rsa.PublicKey
-	if path := strings.TrimSpace(flags.cryptoKey); path != "" && strings.TrimSpace(flags.grpcAddr) == "" {
-		key, err := appcrypto.LoadPublicKey(path)
-		if err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "load public key: %v\n", err)
-			os.Exit(1)
+	if path := strings.TrimSpace(flags.cryptoKey); path != "" {
+		if strings.TrimSpace(flags.grpcAddr) != "" {
+			logg.Warn("crypto-key is ignored when sending metrics via gRPC", zap.String("path", path))
+		} else {
+			key, err := appcrypto.LoadPublicKey(path)
+			if err != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "load public key: %v\n", err)
+				os.Exit(1)
+			}
+			pubKey = key
+			logg.Info("crypto: public key loaded", zap.String("path", path))
 		}
-		pubKey = key
-		logg.Info("crypto: public key loaded", zap.String("path", path))
 	}
 
 	cpuCount, err := cpu.Counts(true)
